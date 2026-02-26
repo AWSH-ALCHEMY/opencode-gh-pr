@@ -1,178 +1,102 @@
+
+import { exec } from '@actions/exec';
 import { ActionConfig } from './ActionConfig';
 import { Logger } from './Logger';
 import { PRAnalysisResult, AIReviewResult } from './types';
-import { exec } from '@actions/exec';
-import { z } from 'zod';
-
-const AIReviewRequestSchema = z.object({
-  model: z.string(),
-  messages: z.array(z.object({
-    role: z.enum(['system', 'user', 'assistant']),
-    content: z.string(),
-  })),
-  temperature: z.number().min(0).max(1),
-  max_tokens: z.number().min(100).max(8000),
-});
-
-const AIResponseSchema = z.object({
-  summary: z.string(),
-  issues: z.array(z.object({
-    file: z.string(),
-    line: z.number(),
-    severity: z.enum(['error', 'warning', 'info']),
-    category: z.enum(['bug', 'security', 'performance', 'style', 'best-practice']),
-    message: z.string(),
-    suggestion: z.string(),
-  })),
-  overallScore: z.number(),
-  approved: z.boolean(),
-  reviewComments: z.array(z.string()),
-});
-
-
 
 export class AIReviewer {
   private readonly config: ActionConfig;
   private readonly logger: Logger;
-  
-  constructor(options: {
-    config: ActionConfig;
-    logger: Logger;
-  }) {
+
+  constructor(options: { config: ActionConfig; logger: Logger }) {
     this.config = options.config;
     this.logger = options.logger;
   }
-  
-  async review(prAnalysis: PRAnalysisResult): Promise<AIReviewResult | null> {
+
+  public async review(prAnalysis: PRAnalysisResult): Promise<AIReviewResult | null> {
     this.logger.startGroup('🧠 AI Code Review');
-    
     try {
-      if (!prAnalysis.shouldReview) {
-        this.logger.info('Skipping AI review based on PR analysis');
-        return null;
+      const rawResponse = await this.callAIAPI(prAnalysis);
+
+      if (!rawResponse) {
+        this.logger.warn('AI review returned an empty response.');
+        return this.createFallbackReview('AI review returned an empty response.');
       }
-      
-      const prompt = this.buildReviewPrompt(prAnalysis);
-      const response = await this.callAIAPI(prompt);
-      const reviewResult = this.parseReviewResponse(response);
-      
-      this.logger.info('AI review completed', {
-        score: reviewResult.overallScore,
-        approved: reviewResult.approved,
-        issues: reviewResult.issues.length,
-      });
-      
+
+      const reviewResult = JSON.parse(rawResponse) as AIReviewResult;
+      this.logger.info('Successfully parsed AI review response.');
       return reviewResult;
-      
     } catch (error) {
-      this.logger.error('AI review failed', error as Error);
-      return this.createFallbackReview();
-      
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`AI review failed: ${errorMessage}`);
+      return this.createFallbackReview(errorMessage);
     } finally {
       this.logger.endGroup();
     }
   }
-  
-  private buildReviewPrompt(prAnalysis: PRAnalysisResult): z.infer<typeof AIReviewRequestSchema> {
-    const temperature = this.config.get('temperature');
-    const maxTokens = this.config.get('maxTokens');
-    
-    const prompt = {
-      messages: [
-        {
-          role: 'system',
-          content: `You are an expert code reviewer. Analyze the provided code changes and respond with a JSON object containing:
-          {
-            "summary": "Brief overview of changes",
-            "issues": [
-              {
-                "file": "path/to/file",
-                "line": 123,
-                "severity": "error|warning|info",
-                "category": "bug|security|performance|style|best-practice",
-                "message": "Issue description",
-                "suggestion": "How to fix"
-              }
-            ],
-            "overallScore": 1-10,
-            "approved": true|false,
-            "reviewComments": ["general comments"]
-          }
-          Focus on security, performance, and maintainability. Be constructive and specific.`,
-        },
-        {
-          role: 'user',
-          content: this.buildReviewContent(prAnalysis),
-        },
-      ],
-      temperature,
-      max_tokens: maxTokens,
-    };
-    
-    return AIReviewRequestSchema.parse(prompt);
-  }
-  
-  private buildReviewContent(prAnalysis: PRAnalysisResult): string {
-    const { filesChanged, additions, deletions, complexity, hasSecuritySensitiveFiles } = prAnalysis;
-    
-    return `PR Analysis:
-- Files changed: ${filesChanged.length}
-- Lines: +${additions} -${deletions}
-- Complexity: ${complexity}
-- Security sensitive: ${hasSecuritySensitiveFiles}
-- Files: ${filesChanged.slice(0, 10).join(', ')}${filesChanged.length > 10 ? '...' : ''}
 
-Please review the code changes for security vulnerabilities, performance issues, and code quality concerns.`;
-  }
-  
-  private async callAIAPI(prompt: z.infer<typeof AIReviewRequestSchema>): Promise<string> {
+  private async callAIAPI(prAnalysis: PRAnalysisResult): Promise<string> {
+    const userContent = this.buildReviewContent(prAnalysis);
+    // The system message is now passed via the --prompt flag, as per the CLI documentation.
+    const systemMessage = this.config.get('system-message');
+
     let output = '';
+    let errorOutput = '';
     const options = {
       listeners: {
         stdout: (data: Buffer) => {
           output += data.toString();
         },
+        stderr: (data: Buffer) => {
+          errorOutput += data.toString();
+        },
       },
+      ignoreReturnCode: true, // We handle errors manually by checking the output
     };
 
-    await exec('opencode', ['run', JSON.stringify(prompt)], options);
+    const args = ['run', userContent, '--prompt', systemMessage];
+    this.logger.info(`Running OpenCode CLI with args: ${args.join(' ')}`)
+
+    const exitCode = await exec('opencode', args, options);
+
+    if (exitCode !== 0) {
+      throw new Error(`OpenCode CLI failed with exit code ${exitCode}. Stderr: ${errorOutput}`);
+    }
+
+    if (errorOutput) {
+      this.logger.warn(`OpenCode CLI stderr: ${errorOutput}`);
+    }
+
     return output;
   }
-  
-  private parseReviewResponse(responseContent: string): AIReviewResult {
-    try {
-      const parsedResponse = JSON.parse(responseContent) as unknown;
-      const validatedData = AIResponseSchema.parse(parsedResponse);
 
-      const sanitizedIssues = validatedData.issues.map(issue => ({
-        ...issue,
-        file: issue.file.replace(/[<>"'&]/g, ''),
-        message: issue.message.replace(/[<>"'&]/g, '').substring(0, 500),
-        suggestion: issue.suggestion.replace(/[<>"'&]/g, '').substring(0, 500),
-      }));
+  private buildReviewContent(prAnalysis: PRAnalysisResult): string {
+    return `PR Analysis:
+- Files changed: ${prAnalysis.filesChanged.length}
+- Lines: +${prAnalysis.additions} -${prAnalysis.deletions}
+- Complexity: ${prAnalysis.complexity}
+- Security risks: ${prAnalysis.hasSecuritySensitiveFiles ? 'Yes' : 'No'}
 
-      return {
-        ...validatedData,
-        summary: validatedData.summary.replace(/[<>"'&]/g, '').substring(0, 1000),
-        issues: sanitizedIssues,
-        overallScore: Math.max(1, Math.min(10, validatedData.overallScore)),
-        reviewComments: validatedData.reviewComments.map(c => c.replace(/[<>"'&]/g, '').substring(0, 500)),
-        commitSha: ''
-      };
-    } catch (error) {
-      throw new Error(`Failed to parse AI review response: ${error instanceof Error ? error.message : String(error)}`);
-    }
+Please provide a review of the following code changes:
+${prAnalysis.filesChanged.join('\n')}`;
   }
-  
-  private createFallbackReview(): AIReviewResult {
+
+  private createFallbackReview(error: string): AIReviewResult {
     this.logger.warn('Creating fallback review due to AI failure');
     return {
       summary: 'AI review failed. Please review the code manually.',
-      issues: [],
-      overallScore: 5,
+      issues: [
+        {
+          file: 'N/A',
+          line: 0,
+          severity: 'warning',
+          category: 'error-handling',
+          message: `The AI reviewer encountered an error: ${error}`,
+          suggestion: 'Check the action logs for more details.',
+        },
+      ],
+      overallScore: 3,
       approved: false,
-      reviewComments: [],
-      commitSha: ''
     };
   }
 }
