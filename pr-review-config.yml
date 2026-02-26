@@ -1,0 +1,118 @@
+# Secure PR Review Configuration
+# Customize the behavior of your secure PR review workflow
+
+# Size limits for protection against resource exhaustion
+size_limits:
+  max_diff_size: 1048576      # 1MB max diff size for AI analysis
+  max_files_changed: 100      # Maximum files to process
+  max_lines_changed: 5000     # Maximum lines changed for full analysis
+  max_ai_diff_size: 50000     # Maximum diff size sent to AI service
+
+# Security patterns for detecting sensitive files
+security_patterns:
+  - pattern: "password|secret|key|credential|token"
+    type: "credential"
+    severity: "high"
+  - pattern: "auth|security|encryption"
+    type: "security"
+    severity: "medium"
+  - pattern: "\\.env$|config\\."
+    type: "config"
+    severity: "medium"
+  - pattern: "(id_rsa|id_dsa|id_ecdsa|id_ed25519)$"
+    type: "ssh_key"
+    severity: "critical"
+
+# AI Review Configuration
+ai_review:
+  model: "opencode-reviewer"
+  temperature: 0.3
+  max_tokens: 2000
+  timeout: 30000              # 30 second timeout
+  fallback_enabled: true      # Use fallback review if AI fails
+  
+# Complexity thresholds
+complexity:
+  low:
+    max_lines: 100
+    max_files: 10
+  medium:
+    max_lines: 500
+    max_files: 50
+  high:
+    max_lines: 5000
+    max_files: 100
+
+# Review criteria
+criteria:
+  approved_threshold: 7        # Minimum score for auto-approval
+  security_review_required: true  # Always review security-sensitive files
+  performance_check_enabled: true
+  documentation_check_enabled: true
+
+# Team assignments (customize for your organization)
+reviewer_teams:
+  frontend:
+    paths: ["src/", "components/", "public/"]
+    team: "frontend-team"
+  backend:
+    paths: ["api/", "server/", "backend/"]
+    team: "backend-team"
+  security:
+    paths: ["auth/", "security/", "encryption/"]
+    team: "security-team"
+  infrastructure:
+    paths: [".github/", "terraform/", "docker/"]
+    team: "devops-team"
+
+# Comment templates
+templates:
+  security_notice: |
+    ## 🔒 Security Analysis
+    
+    ⚠️ **Security-sensitive files detected** in this PR:
+    {files}
+    
+    **Recommendations:**
+    - Review for hardcoded secrets or credentials
+    - Verify no sensitive data is exposed
+    - Consider security team review
+    - Run additional security scans
+  
+  review_summary: |
+    ## 🔒 Secure PR Review Summary
+    
+    | Check | Status |
+    |-------|--------|
+    | 📊 PR Analysis | {analysis_status} |
+    | 🧠 AI Code Review | {review_status} |
+    | 🔐 Security Analysis | {security_status} |
+    
+    ### 📊 Change Statistics
+    - **Files Changed**: {files_changed}
+    - **Lines Added**: {lines_added}
+    - **Lines Removed**: {lines_removed}
+    - **Complexity**: {complexity}
+    
+    {overall_status}
+    
+    ---
+    *Security-focused review completed with enhanced protection against common vulnerabilities.*
+
+# Performance settings
+performance:
+  parallel_jobs: true          # Run jobs in parallel where possible
+  cache_dependencies: true     # Cache analysis results
+  early_exit_threshold: 10     # Exit early for trivial changes (lines)
+
+# Error handling
+error_handling:
+  max_retries: 3
+  continue_on_error: true      # Continue workflow even if one job fails
+  create_incident_issue: false  # Create GitHub issue on repeated failures
+
+# Logging and monitoring
+logging:
+  log_level: "info"           # debug, info, warning, error
+  include_diff_snippets: false # Don't log sensitive diff content
+  anonymize_author: false    # Keep author info for review context

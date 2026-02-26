@@ -1,0 +1,110 @@
+name: 'Secure PR Review Action'
+description: 'Professional AI-powered pull request review with enterprise-grade security'
+author: 'Security-First DevOps'
+
+inputs:
+  # Core Configuration
+  github-token:
+    description: 'GitHub token for API access'
+    required: true
+  
+  ai-api-key:
+    description: 'AI service API key'
+    required: true
+  
+  ai-model:
+    description: 'AI model to use for review'
+    required: false
+    default: 'opencode-reviewer'
+  
+  # Review Configuration
+  approved-threshold:
+    description: 'Minimum score for auto-approval (1-10)'
+    required: false
+    default: '7'
+  
+  max-diff-size:
+    description: 'Maximum diff size in bytes'
+    required: false
+    default: '1048576' # 1MB
+  
+  max-files:
+    description: 'Maximum files to analyze'
+    required: false
+    default: '100'
+  
+  max-lines:
+    description: 'Maximum lines to analyze'
+    required: false
+    default: '5000'
+  
+  # Feature Flags
+  security-analysis:
+    description: 'Enable security analysis'
+    required: false
+    default: 'true'
+  
+  performance-check:
+    description: 'Enable performance analysis'
+    required: false
+    default: 'true'
+  
+  documentation-check:
+    description: 'Enable documentation compliance check'
+    required: false
+    default: 'true'
+  
+  # Advanced Options
+  config-file:
+    description: 'Path to configuration file'
+    required: false
+    default: '.github/pr-review-config.yml'
+  
+  custom-prompt:
+    description: 'Custom AI review prompt'
+    required: false
+  
+  # Output Control
+  create-checks:
+    description: 'Create GitHub check runs'
+    required: false
+    default: 'true'
+  
+  post-comments:
+    description: 'Post review comments'
+    required: false
+    default: 'true'
+  
+  apply-labels:
+    description: 'Apply labels based on review'
+    required: false
+    default: 'true'
+
+outputs:
+  review-status:
+    description: 'Overall review status (approved/changes-requested)'
+  
+  review-score:
+    description: 'Review score (1-10)'
+  
+  security-issues:
+    description: 'Number of security issues found'
+  
+  performance-issues:
+    description: 'Number of performance issues found'
+  
+  files-analyzed:
+    description: 'Number of files analyzed'
+  
+  execution-time:
+    description: 'Total execution time in seconds'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
+  pre: 'dist/setup.js'
+  post: 'dist/cleanup.js'
+
+branding:
+  icon: 'shield'
+  color: 'blue'

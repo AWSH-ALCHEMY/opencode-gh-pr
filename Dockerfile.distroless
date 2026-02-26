@@ -1,0 +1,31 @@
+# Use distroless for minimal attack surface
+FROM node:20-slim AS builder
+
+# Set the working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci --only=production --ignore-scripts
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN npm run build
+
+# Production stage with distroless
+FROM gcr.io/distroless/nodejs20-debian12
+
+# Copy built application
+COPY --from=builder /app/dist /app/dist
+COPY --from=builder /app/node_modules /app/node_modules
+COPY --from=builder /app/package.json /app/package.json
+
+# Set working directory
+WORKDIR /app
+
+# Set the entrypoint
+ENTRYPOINT ["/nodejs/bin/node", "/app/dist/index.js"]
