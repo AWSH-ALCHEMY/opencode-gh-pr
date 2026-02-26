@@ -130,6 +130,7 @@ export class CommentPoster {
   }
   
   private buildReviewComment(review: AIReviewResult): string {
+    const issues = review.issues || [];
     return `## 🤖 AI Code Review
 
 **Score: ${review.overallScore}/10** - ${review.approved ? '✅ Approved' : '❌ Changes Requested'}
@@ -138,7 +139,7 @@ ${review.summary}
 
 ### Issues Found:
 
-${review.issues.map(issue => `- **${issue.file}:${issue.line}** [${issue.severity}] ${issue.message}`).join('\n')}
+${issues.map(issue => `- **${issue.file}:${issue.line}** [${issue.severity}] ${issue.message}`).join('\n')}
 `;
   }
   
