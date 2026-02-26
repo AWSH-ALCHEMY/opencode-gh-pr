@@ -207,10 +207,4 @@ Please review the code changes for security vulnerabilities, performance issues,
       commitSha: ''
     };
   }
-      overallScore: 5,
-      approved: false,
-      reviewComments: ['AI analysis failed - requires human review'],
-      commitSha: ''
-    };
-  }
 }
