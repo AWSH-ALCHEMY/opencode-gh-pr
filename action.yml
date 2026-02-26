@@ -17,6 +17,65 @@ inputs:
     required: false
     default: 'opencode-reviewer'
 
+  # Review Configuration
+  approved-threshold:
+    description: 'The minimum score to approve a PR'
+    required: false
+    default: '7'
+
+  max-diff-size:
+    description: 'The maximum diff size to review'
+    required: false
+    default: '1048576'
+
+  max-files:
+    description: 'The maximum number of files to review'
+    required: false
+    default: '100'
+
+  max-lines:
+    description: 'The maximum number of lines to review'
+    required: false
+    default: '5000'
+
+  # Feature Flags
+  security-analysis:
+    description: 'Enable security analysis'
+    required: false
+    default: 'true'
+
+  performance-check:
+    description: 'Enable performance checks'
+    required: false
+    default: 'true'
+
+  documentation-check:
+    description: 'Enable documentation checks'
+    required: false
+    default: 'true'
+
+  # Advanced Options
+  config-file:
+    description: 'Path to a custom configuration file'
+    required: false
+    default: '.github/pr-review-config.yml'
+
+  # Output Control
+  create-checks:
+    description: 'Create a check run for the review'
+    required: false
+    default: 'true'
+
+  post-comments:
+    description: 'Post comments on the PR'
+    required: false
+    default: 'true'
+
+  apply-labels:
+    description: 'Apply labels to the PR'
+    required: false
+    default: 'true'
+
 runs:
   using: 'node20'
   main: 'dist/index.js'
