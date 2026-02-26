@@ -113,6 +113,8 @@ export class PRAnalyzer {
     const maxFiles = this.config.get('maxFiles');
     const maxLines = this.config.get('maxLines');
 
+    this.logger.info(`Constraints: maxFiles=${maxFiles}, maxLines=${maxLines}`);
+
     if (fileCount > maxFiles) {
       return { valid: false, reason: `Too many files changed (${fileCount} > ${maxFiles})` };
     }
