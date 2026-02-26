@@ -97,6 +97,17 @@ export class CommentPoster {
   }
   
   private async createCheckRun(review: AIReviewResult): Promise<void> {
+    const annotations = (review.issues || []).map(issue => ({
+      path: issue.file,
+      start_line: issue.line,
+      end_line: issue.line,
+      annotation_level: issue.severity === 'error' ? 'failure' : (issue.severity === 'info' ? 'notice' : 'warning'),
+      message: issue.message,
+      title: issue.category,
+    }));
+
+    const issuesText = (review.issues || []).map(issue => `- **${issue.file}#L${issue.line}** [${issue.severity}] ${issue.message}`).join('\n');
+
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const checksApi = this.octokit.checks as unknown as {
       create: (params: {
@@ -105,15 +116,23 @@ export class CommentPoster {
         name: string;
         head_sha: string;
         status: 'completed';
-        conclusion: 'success' | 'failure';
+        conclusion: 'success' | 'failure' | 'neutral';
         output: {
           title: string;
           summary: string;
           text: string;
+          annotations?: {
+            path: string;
+            start_line: number;
+            end_line: number;
+            annotation_level: 'notice' | 'warning' | 'failure';
+            message: string;
+            title?: string;
+          }[];
         };
       }) => Promise<unknown>;
     };
-    
+
     await checksApi.create({
       owner: this.repo.owner,
       repo: this.repo.repo,
@@ -122,9 +141,10 @@ export class CommentPoster {
       status: 'completed',
       conclusion: review.approved ? 'success' : 'failure',
       output: {
-        title: 'AI Code Review',
+        title: `AI Review: ${review.approved ? 'Approved' : 'Changes Requested'}`,
         summary: review.summary,
-        text: review.reviewComments.join('\n'),
+        text: `**${(review.issues || []).length} issues found.**\n\n${issuesText}\n\n**General Comments:**\n${(review.reviewComments || []).join('\n')}`,
+        annotations: annotations.slice(0, 50), // GitHub API has a limit of 50 annotations per request
       },
     });
   }
