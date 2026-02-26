@@ -57,7 +57,7 @@ jobs:
           path: dist/
 
       - name: 'Install OpenCode CLI'
-        run: npm install -g opencode-ai
+        run: npm install -g @opencode-ai/cli
 
       - name: 'Run Secure PR Review Action'
         id: review
