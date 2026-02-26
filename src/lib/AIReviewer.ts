@@ -79,7 +79,6 @@ export class AIReviewer {
     const maxTokens = this.config.get('maxTokens');
     
     const prompt = {
-      model,
       messages: [
         {
           role: 'system',
