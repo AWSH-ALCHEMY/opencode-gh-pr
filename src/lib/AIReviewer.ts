@@ -98,14 +98,7 @@ export class AIReviewer {
           }
           Focus on security, performance, and maintainability. Be constructive and specific.`;
 
-    const userContent = `PR Analysis:
-- Files changed: ${prAnalysis.filesChanged.length}
-- Lines: +${prAnalysis.additions} -${prAnalysis.deletions}
-- Complexity: ${prAnalysis.complexity}
-- Security risks: ${prAnalysis.hasSecuritySensitiveFiles ? 'Yes' : 'No'}
-
-Please provide a review of the following code changes:
-${prAnalysis.filesChanged.join('\n')}`;
+    const diff = await this.getDiff();\n\n    const userContent = `PR Analysis:\n- Files changed: ${prAnalysis.filesChanged.length}\n- Lines: +${prAnalysis.additions} -${prAnalysis.deletions}\n- Complexity: ${prAnalysis.complexity}\n- Security risks: ${prAnalysis.hasSecuritySensitiveFiles ? 'Yes' : 'No'}\n\nPlease provide a review of the following code changes:\n\n\`\`\`diff\n${diff}\n\`\`\`\n`;${prAnalysis.filesChanged.join('\n')}`;
 
     return `${systemMessage}\n\n${userContent}`;
   }
