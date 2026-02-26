@@ -1,4 +1,5 @@
 import { Octokit } from '@octokit/rest';
+import * as github from '@actions/github';
 import { ActionConfig } from './ActionConfig';
 import { Logger } from './Logger';
 import { PRAnalyzer } from './PRAnalyzer';
@@ -11,7 +12,6 @@ export interface SecurePRReviewOptions {
   octokit: Octokit;
   config: ActionConfig;
   logger: Logger;
-  prNumber: number;
   repo: { owner: string; repo: string };
 }
 
