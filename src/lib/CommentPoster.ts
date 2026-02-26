@@ -81,13 +81,13 @@ export class CommentPoster {
     const marker = `<!-- ${identifier} -->`;
     const taggedBody = `${body}\n${marker}`;
 
-    const comments = await this.octokit.issues.listComments({
+    const allComments = await this.octokit.paginate(this.octokit.issues.listComments, {
       owner: this.repo.owner,
       repo: this.repo.repo,
       issue_number: this.prNumber,
     });
 
-    const existingComment = comments.data.find(comment => comment.body?.includes(marker));
+    const existingComment = allComments.find(comment => comment.body?.includes(marker));
 
     if (existingComment) {
       await this.octokit.issues.updateComment({
