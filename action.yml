@@ -6,11 +6,11 @@ inputs:
   # Core Configuration
   github-token:
     description: 'GitHub token for API access'
-    required: true
+    required: false
   
   ai-api-key:
     description: 'AI service API key'
-    required: true
+    required: false
   
   ai-model:
     description: 'AI model to use for review'
