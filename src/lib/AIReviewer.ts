@@ -70,7 +70,7 @@ export class AIReviewer {
     const jsonObjects = jsonStream.trim().split('\n');
 
     // The last JSON object in the stream should be the final review.
-    const lastJson = jsonObjects[jsonObjects.length - 1];
+    const lastJson = jsonObjects[jsonObjects.length - 1] || '';
 
     return lastJson;
   }
