@@ -23,6 +23,7 @@ export class AIReviewer {
       const reviewResult = JSON.parse(rawResponse) as AIReviewResult;
       reviewResult.issues = reviewResult.issues || [];
       reviewResult.reviewComments = reviewResult.reviewComments || [];
+      reviewResult.summary = reviewResult.summary || 'AI analysis complete.';
       reviewResult.commitSha = commitSha; // Ensure commitSha is part of the final result
       this.logger.info('Successfully parsed AI review response.');
       return reviewResult;
