@@ -74,7 +74,6 @@ export class AIReviewer {
   }
   
   private buildReviewPrompt(prAnalysis: PRAnalysisResult): z.infer<typeof AIReviewRequestSchema> {
-    const model = this.config.get('aiModel');
     const temperature = this.config.get('temperature');
     const maxTokens = this.config.get('maxTokens');
     
