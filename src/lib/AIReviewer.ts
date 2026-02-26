@@ -1,6 +1,5 @@
 
 import { exec } from '@actions/exec';
-import { ActionConfig } from './ActionConfig';
 import { Logger } from './Logger';
 import { PRAnalysisResult, AIReviewResult } from './types';
 
