@@ -5,11 +5,9 @@ import { Logger } from './Logger';
 import { PRAnalysisResult, AIReviewResult } from './types';
 
 export class AIReviewer {
-  private readonly config: ActionConfig;
   private readonly logger: Logger;
 
-  constructor(options: { config: ActionConfig; logger: Logger }) {
-    this.config = options.config;
+  constructor(options: { logger: Logger }) {
     this.logger = options.logger;
   }
 
@@ -113,6 +111,8 @@ ${prAnalysis.filesChanged.join('\n')}`;
       ],
       overallScore: 3,
       approved: false,
+      reviewComments: [],
+      commitSha: '',
     };
   }
 }

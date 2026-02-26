@@ -45,7 +45,6 @@ export class SecurePRReview {
     });
     
     this.aiReviewer = new AIReviewer({
-      config: this.config,
       logger: this.logger,
     });
     
