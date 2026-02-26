@@ -64,7 +64,15 @@ export class AIReviewer {
       this.logger.warn(`OpenCode CLI stderr: ${errorOutput}`);
     }
 
-    return output;
+    // The output can be a stream of concatenated JSON objects.
+    // We split them by inserting a newline between adjacent objects.
+    const jsonStream = output.replace(/}\s*{/g, '}\n{');
+    const jsonObjects = jsonStream.trim().split('\n');
+
+    // The last JSON object in the stream should be the final review.
+    const lastJson = jsonObjects[jsonObjects.length - 1];
+
+    return lastJson;
   }
 
   private buildReviewContent(prAnalysis: PRAnalysisResult): string {
