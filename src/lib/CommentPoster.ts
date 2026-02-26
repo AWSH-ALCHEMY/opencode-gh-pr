@@ -26,7 +26,7 @@ export class CommentPoster {
     try {
       if (this.config.get('postComments')) {
         const summaryComment = this.buildReviewComment(review);
-        await this.createComment(summaryComment);
+        await this.upsertComment(summaryComment, 'ai-review-comment');
       }
       
       if (this.config.get('createChecks')) {
@@ -47,7 +47,7 @@ export class CommentPoster {
     
     try {
       const securityComment = this.buildSecurityComment(scanResult);
-      await this.createComment(securityComment);
+      await this.upsertComment(securityComment, 'security-notice-comment');
       this.logger.info('✅ Security notice posted successfully');
       
     } catch (error) {
@@ -62,7 +62,7 @@ export class CommentPoster {
     
     try {
       const summaryComment = this.buildSummaryComment(result);
-      await this.createComment(summaryComment);
+      await this.upsertComment(summaryComment, 'summary-comment');
       
       if (this.config.get('applyLabels')) {
         await this.applyLabels(result);
@@ -77,23 +77,33 @@ export class CommentPoster {
     }
   }
   
-  private async createComment(body: string): Promise<void> {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const issuesApi = this.octokit.issues as unknown as {
-      createComment: (params: {
-        owner: string;
-        repo: string;
-        issue_number: number;
-        body: string;
-      }) => Promise<unknown>;
-    };
-    
-    await issuesApi.createComment({
+  private async upsertComment(body: string, identifier: string): Promise<void> {
+    const marker = `<!-- ${identifier} -->`;
+    const taggedBody = `${body}\n${marker}`;
+
+    const comments = await this.octokit.issues.listComments({
       owner: this.repo.owner,
       repo: this.repo.repo,
       issue_number: this.prNumber,
-      body,
     });
+
+    const existingComment = comments.data.find(comment => comment.body?.includes(marker));
+
+    if (existingComment) {
+      await this.octokit.issues.updateComment({
+        owner: this.repo.owner,
+        repo: this.repo.repo,
+        comment_id: existingComment.id,
+        body: taggedBody,
+      });
+    } else {
+      await this.octokit.issues.createComment({
+        owner: this.repo.owner,
+        repo: this.repo.repo,
+        issue_number: this.prNumber,
+        body: taggedBody,
+      });
+    }
   }
   
   private mapSeverityToAnnotationLevel(severity: 'error' | 'warning' | 'info'): 'failure' | 'warning' | 'notice' {
