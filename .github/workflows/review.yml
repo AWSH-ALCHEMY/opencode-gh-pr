@@ -15,6 +15,7 @@ jobs:
       contents: read
       pull-requests: write
       checks: write
+      actions: read
     
     steps:
       - name: 'Checkout Repository'
