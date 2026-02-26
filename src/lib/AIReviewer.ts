@@ -206,10 +206,7 @@ Please review the code changes for security vulnerabilities, performance issues,
       reviewComments: [],
       commitSha: ''
     };
-  }  
-    return {
-      summary: 'AI review unavailable - manual review required',
-      issues: [],
+  }
       overallScore: 5,
       approved: false,
       reviewComments: ['AI analysis failed - requires human review'],
