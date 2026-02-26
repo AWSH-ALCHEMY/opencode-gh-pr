@@ -165,7 +165,7 @@ jobs:
             echo "Dependency changes detected"
             
             # List new dependencies
-            NEW_DEPS=$(git diff origin/${{ github.base_ref }} -- package.json 2>/dev/null | grep "^\+" | grep -v "^\+\+" || true)
+            NEW_DEPS=$(git diff origin/${{ github.base_ref }} -- package.json 2>/dev/null | grep "^\\+" | grep -v "^\\+\\+" || true)
             
             if [ -n "$NEW_DEPS" ]; then
               echo "New dependencies added:"
