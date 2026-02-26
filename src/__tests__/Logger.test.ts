@@ -37,10 +37,10 @@ describe('Logger', () => {
       
       const sanitized = logger['sanitizeData'](data);
       
-      expect(sanitized.password).toBe('[REDACTED]');
-      expect(sanitized.apiKey).toBe('[REDACTED]');
-      expect(sanitized.username).toBe('john');
-      expect(sanitized.normalField).toBe('value');
+      expect(sanitized['password']).toBe('[REDACTED]');
+      expect(sanitized['apiKey']).toBe('[REDACTED]');
+      expect(sanitized['username']).toBe('john');
+      expect(sanitized['normalField']).toBe('value');
     });
     
     it('should sanitize string values', () => {
@@ -50,9 +50,9 @@ describe('Logger', () => {
       
       const sanitized = logger['sanitizeData'](data);
       
-      expect(sanitized.message).not.toContain(';');
-      expect(sanitized.message).not.toContain('|');
-      expect(sanitized.message).not.toContain('$');
+      expect(sanitized['message']).not.toContain(';');
+      expect(sanitized['message']).not.toContain('|');
+      expect(sanitized['message']).not.toContain('$');
     });
     
     it('should recursively sanitize nested objects', () => {
@@ -68,9 +68,12 @@ describe('Logger', () => {
       
       const sanitized = logger['sanitizeData'](data);
       
-      expect(sanitized.user.password).toBe('[REDACTED]');
-      expect(sanitized.config.api_key).toBe('[REDACTED]');
-      expect(sanitized.user.name).toBe('john');
+      const userData = sanitized['user'] as Record<string, unknown>;
+      const configData = sanitized['config'] as Record<string, unknown>;
+      
+      expect(userData['password']).toBe('[REDACTED]');
+      expect(configData['api_key']).toBe('[REDACTED]');
+      expect(userData['name']).toBe('john');
     });
   });
   

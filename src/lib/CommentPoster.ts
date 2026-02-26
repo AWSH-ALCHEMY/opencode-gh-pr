@@ -12,7 +12,8 @@ export class CommentPoster {
   private readonly prNumber: number;
   
   constructor(options: { octokit: Octokit; config: ActionConfig; logger: Logger; repo: { owner: string; repo: string }; prNumber: number; }) {
-    this.octokit = options.octokit;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    this.octokit = options.octokit as unknown as Octokit;
     this.config = options.config;
     this.logger = options.logger;
     this.repo = options.repo;
@@ -77,7 +78,17 @@ export class CommentPoster {
   }
   
   private async createComment(body: string): Promise<void> {
-    await this.octokit.issues.createComment({
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const issuesApi = this.octokit.issues as unknown as {
+      createComment: (params: {
+        owner: string;
+        repo: string;
+        issue_number: number;
+        body: string;
+      }) => Promise<unknown>;
+    };
+    
+    await issuesApi.createComment({
       owner: this.repo.owner,
       repo: this.repo.repo,
       issue_number: this.prNumber,
@@ -86,7 +97,24 @@ export class CommentPoster {
   }
   
   private async createCheckRun(review: AIReviewResult): Promise<void> {
-    await this.octokit.checks.create({
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const checksApi = this.octokit.checks as unknown as {
+      create: (params: {
+        owner: string;
+        repo: string;
+        name: string;
+        head_sha: string;
+        status: 'completed';
+        conclusion: 'success' | 'failure';
+        output: {
+          title: string;
+          summary: string;
+          text: string;
+        };
+      }) => Promise<unknown>;
+    };
+    
+    await checksApi.create({
       owner: this.repo.owner,
       repo: this.repo.repo,
       name: 'AI Code Review',
@@ -148,7 +176,17 @@ ${result.summary}
       labels.push('security-issue');
     }
     
-    await this.octokit.issues.addLabels({
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const issuesApi = this.octokit.issues as unknown as {
+      addLabels: (params: {
+        owner: string;
+        repo: string;
+        issue_number: number;
+        labels: string[];
+      }) => Promise<unknown>;
+    };
+    
+    await issuesApi.addLabels({
       owner: this.repo.owner,
       repo: this.repo.repo,
       issue_number: this.prNumber,

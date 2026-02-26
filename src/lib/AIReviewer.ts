@@ -154,7 +154,7 @@ Please review the code changes for security vulnerabilities, performance issues,
       );
       
       const validatedResponse = AIReviewResponseSchema.parse(response.data);
-      return validatedResponse.choices[0].message.content;
+      return validatedResponse.choices[0]?.message?.content ?? 'No response content';
       
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -173,7 +173,7 @@ Please review the code changes for security vulnerabilities, performance issues,
   
   private parseReviewResponse(responseContent: string): AIReviewResult {
     try {
-      const parsedResponse = JSON.parse(responseContent);
+      const parsedResponse = JSON.parse(responseContent) as unknown;
       const validatedData = AIResponseSchema.parse(parsedResponse);
 
       const sanitizedIssues = validatedData.issues.map(issue => ({

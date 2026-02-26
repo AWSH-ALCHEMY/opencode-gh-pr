@@ -165,36 +165,40 @@ export class ActionConfig {
    * Deep merge configuration objects
    */
   private mergeConfig(fileConfig: Record<string, unknown>): void {
-    if (typeof fileConfig.sizeLimits === 'object' && fileConfig.sizeLimits !== null) {
-      const sizeLimits = fileConfig.sizeLimits as Record<string, unknown>;
-      if (typeof sizeLimits.maxDiffSize === 'number') this.config.maxDiffSize = sizeLimits.maxDiffSize;
-      if (typeof sizeLimits.maxFiles === 'number') this.config.maxFiles = sizeLimits.maxFiles;
-      if (typeof sizeLimits.maxLines === 'number') this.config.maxLines = sizeLimits.maxLines;
-      if (typeof sizeLimits.maxAiDiffSize === 'number') this.config.maxAiDiffSize = sizeLimits.maxAiDiffSize;
+    if (typeof fileConfig['sizeLimits'] === 'object' && fileConfig['sizeLimits'] !== null) {
+      const sizeLimits = fileConfig['sizeLimits'] as Record<string, unknown>;
+      if (typeof sizeLimits['maxDiffSize'] === 'number') this.config.maxDiffSize = sizeLimits['maxDiffSize'];
+      if (typeof sizeLimits['maxFiles'] === 'number') this.config.maxFiles = sizeLimits['maxFiles'];
+      if (typeof sizeLimits['maxLines'] === 'number') this.config.maxLines = sizeLimits['maxLines'];
+      if (typeof sizeLimits['maxAiDiffSize'] === 'number') this.config.maxAiDiffSize = sizeLimits['maxAiDiffSize'];
     }
     
-    if (typeof fileConfig.aiReview === 'object' && fileConfig.aiReview !== null) {
-      const aiReview = fileConfig.aiReview as Record<string, unknown>;
-      if (typeof aiReview.model === 'string') this.config.aiModel = aiReview.model;
-      if (typeof aiReview.temperature === 'number') this.config.temperature = aiReview.temperature;
-      if (typeof aiReview.maxTokens === 'number') this.config.maxTokens = aiReview.maxTokens;
-      if (typeof aiReview.timeout === 'number') this.config.timeout = aiReview.timeout;
+    if (typeof fileConfig['aiReview'] === 'object' && fileConfig['aiReview'] !== null) {
+      const aiReview = fileConfig['aiReview'] as Record<string, unknown>;
+      if (typeof aiReview['model'] === 'string') this.config.aiModel = aiReview['model'];
+      if (typeof aiReview['temperature'] === 'number') this.config.temperature = aiReview['temperature'];
+      if (typeof aiReview['maxTokens'] === 'number') this.config.maxTokens = aiReview['maxTokens'];
+      if (typeof aiReview['timeout'] === 'number') this.config.timeout = aiReview['timeout'];
     }
     
-    if (typeof fileConfig.criteria === 'object' && fileConfig.criteria !== null) {
-      const criteria = fileConfig.criteria as Record<string, unknown>;
-      if (typeof criteria.approvedThreshold === 'number') this.config.approvedThreshold = criteria.approvedThreshold;
-      if (typeof criteria.securityAnalysis === 'boolean') this.config.securityAnalysis = criteria.securityAnalysis;
-      if (typeof criteria.performanceCheck === 'boolean') this.config.performanceCheck = criteria.performanceCheck;
-      if (typeof criteria.documentationCheck === 'boolean') this.config.documentationCheck = criteria.documentationCheck;
+    if (typeof fileConfig['criteria'] === 'object' && fileConfig['criteria'] !== null) {
+      const criteria = fileConfig['criteria'] as Record<string, unknown>;
+      if (typeof criteria['approvedThreshold'] === 'number') this.config.approvedThreshold = criteria['approvedThreshold'];
+      if (typeof criteria['securityAnalysis'] === 'boolean') this.config.securityAnalysis = criteria['securityAnalysis'];
+      if (typeof criteria['performanceCheck'] === 'boolean') this.config.performanceCheck = criteria['performanceCheck'];
+      if (typeof criteria['documentationCheck'] === 'boolean') this.config.documentationCheck = criteria['documentationCheck'];
     }
     
-    if (Array.isArray(fileConfig.securityPatterns)) {
-      this.config.securityPatterns = fileConfig.securityPatterns as Array<{ pattern: string; type: string; severity: string }>;
+    if (Array.isArray(fileConfig['securityPatterns'])) {
+      this.config.securityPatterns = fileConfig['securityPatterns'] as Array<{
+        pattern: string;
+        type: 'credential' | 'security' | 'config' | 'ssh_key';
+        severity: 'low' | 'medium' | 'high' | 'critical';
+      }>;
     }
     
-    if (typeof fileConfig.reviewerTeams === 'object' && fileConfig.reviewerTeams !== null) {
-      this.config.reviewerTeams = fileConfig.reviewerTeams as Record<string, { paths: string[]; team: string }>;
+    if (typeof fileConfig['reviewerTeams'] === 'object' && fileConfig['reviewerTeams'] !== null) {
+      this.config.reviewerTeams = fileConfig['reviewerTeams'] as Record<string, { paths: string[]; team: string }>;
     }
   }
   

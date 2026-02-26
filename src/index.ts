@@ -1,4 +1,5 @@
 import * as core from '@actions/core';
+import { Octokit } from '@octokit/rest';
 import * as github from '@actions/github';
 import { SecurePRReview } from './lib/SecurePRReview';
 import { ActionConfig } from './lib/ActionConfig';
@@ -25,7 +26,7 @@ async function run(): Promise<void> {
     const aiApiKey = core.getInput('ai-api-key', { required: true });
     
     // Initialize GitHub client
-    const octokit = github.getOctokit(githubToken);
+    const octokit = new Octokit({ auth: githubToken });
     
     // Get context
     const context = github.context;
@@ -34,14 +35,13 @@ async function run(): Promise<void> {
     }
     
     const pr = context.payload.pull_request;
-    logger.info(`Processing PR #${pr.number}: ${pr.title}`);
+    logger.info(`Processing PR #${pr.number}: ${pr['title']}`);
     
     // Initialize and run the secure review
     const reviewer = new SecurePRReview({
       octokit,
       config,
       logger,
-      githubToken,
       aiApiKey,
       prNumber: pr.number,
       repo: context.repo,

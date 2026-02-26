@@ -12,7 +12,8 @@ export class PRAnalyzer {
   private readonly prNumber: number;
 
   constructor(options: { octokit: Octokit; config: ActionConfig; logger: Logger; repo: { owner: string; repo: string }; prNumber: number; }) {
-    this.octokit = options.octokit;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    this.octokit = options.octokit as unknown as Octokit;
     this.config = options.config;
     this.logger = options.logger;
     this.repo = options.repo;
@@ -22,13 +23,28 @@ export class PRAnalyzer {
   async analyze(): Promise<PRAnalysisResult> {
     this.logger.startGroup('📊 PR Analysis');
     try {
-      const pullRequest: { data: { additions: number; deletions: number; title: string; } } = await this.octokit.pulls.get({
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      const pullsApi = this.octokit.pulls as unknown as {
+        get: (params: {
+          owner: string;
+          repo: string;
+          pull_number: number;
+        }) => Promise<{ data: { additions: number; deletions: number; title: string; } }>;
+        listFiles: (params: {
+          owner: string;
+          repo: string;
+          pull_number: number;
+          per_page: number;
+        }) => Promise<{ data: { filename: string; }[] }>;
+      };
+      
+      const pullRequest = await pullsApi.get({
         owner: this.repo.owner,
         repo: this.repo.repo,
         pull_number: this.prNumber,
       });
 
-      const files: { data: { filename: string; }[] } = await this.octokit.pulls.listFiles({
+      const files = await pullsApi.listFiles({
         owner: this.repo.owner,
         repo: this.repo.repo,
         pull_number: this.prNumber,
@@ -57,7 +73,7 @@ export class PRAnalyzer {
           complexity: 'low',
           hasSecuritySensitiveFiles: false,
           shouldReview: false,
-          reason: validation.reason,
+          reason: validation.reason as string,
         };
       }
 

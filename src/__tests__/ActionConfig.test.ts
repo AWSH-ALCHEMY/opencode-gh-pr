@@ -19,9 +19,9 @@ describe('ActionConfig', () => {
     });
     
     it('should override with environment inputs', () => {
-      process.env.INPUT_MAX_DIFF_SIZE = '2097152';
-      process.env.INPUT_AI_MODEL = 'custom-model';
-      process.env.INPUT_APPROVED_THRESHOLD = '8';
+      process.env['INPUT_MAX-DIFF-SIZE'] = '2097152';
+      process.env['INPUT_AI-MODEL'] = 'custom-model';
+      process.env['INPUT_APPROVED-THRESHOLD'] = '8';
       
       config.load();
       
@@ -29,35 +29,35 @@ describe('ActionConfig', () => {
       expect(config.get('aiModel')).toBe('custom-model');
       expect(config.get('approvedThreshold')).toBe(8);
       
-      delete process.env.INPUT_MAX_DIFF_SIZE;
-      delete process.env.INPUT_AI_MODEL;
-      delete process.env.INPUT_APPROVED_THRESHOLD;
+      delete process.env['INPUT_MAX-DIFF-SIZE'];
+      delete process.env['INPUT_AI-MODEL'];
+      delete process.env['INPUT_APPROVED-THRESHOLD'];
     });
     
     it('should validate configuration constraints', () => {
-      process.env.INPUT_MAX_DIFF_SIZE = '100'; // Too small
+      process.env['INPUT_MAX-DIFF-SIZE'] = '100'; // Too small
       
       expect(() => config.load()).toThrow('Configuration validation failed');
       
-      delete process.env.INPUT_MAX_DIFF_SIZE;
+      delete process.env['INPUT_MAX-DIFF-SIZE'];
     });
   });
   
   describe('validation', () => {
-    it('should reject invalid size limits', async () => {
-      process.env.INPUT_MAX_DIFF_SIZE = '100'; // Below minimum
+    it('should reject invalid size limits', () => {
+      process.env['INPUT_MAX-DIFF-SIZE'] = '100'; // Below minimum
       
-      await expect(config.load()).rejects.toThrow('Configuration validation failed');
+      expect(() => config.load()).toThrow('Configuration validation failed');
       
-      delete process.env.INPUT_MAX_DIFF_SIZE;
+      delete process.env['INPUT_MAX-DIFF-SIZE'];
     });
     
-    it('should reject invalid threshold values', async () => {
-      process.env.INPUT_APPROVED_THRESHOLD = '15'; // Above maximum
+    it('should reject invalid threshold values', () => {
+      process.env['INPUT_APPROVED-THRESHOLD'] = '15'; // Above maximum
       
-      await expect(config.load()).rejects.toThrow('Configuration validation failed');
+      expect(() => config.load()).toThrow('Configuration validation failed');
       
-      delete process.env.INPUT_APPROVED_THRESHOLD;
+      delete process.env['INPUT_APPROVED-THRESHOLD'];
     });
   });
 });

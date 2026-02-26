@@ -11,20 +11,15 @@ export interface SecurePRReviewOptions {
   octokit: Octokit;
   config: ActionConfig;
   logger: Logger;
-  githubToken: string;
   aiApiKey: string;
   prNumber: number;
-  repo: {
-    owner: string;
-    repo: string;
-  };
+  repo: { owner: string; repo: string };
 }
 
 export class SecurePRReview {
   private readonly octokit: Octokit;
   private readonly config: ActionConfig;
   private readonly logger: Logger;
-  private readonly githubToken: string;
   private readonly aiApiKey: string;
   private readonly prNumber: number;
   private readonly repo: { owner: string; repo: string };
@@ -35,15 +30,16 @@ export class SecurePRReview {
   private commentPoster: CommentPoster;
   
   constructor(options: SecurePRReviewOptions) {
-    this.octokit = options.octokit;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    this.octokit = options.octokit as unknown as Octokit;
     this.config = options.config;
     this.logger = options.logger;
-    this.githubToken = options.githubToken;
     this.aiApiKey = options.aiApiKey;
     this.prNumber = options.prNumber;
     this.repo = options.repo;
     
     this.prAnalyzer = new PRAnalyzer({
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       octokit: this.octokit,
       config: this.config,
       logger: this.logger,
@@ -63,6 +59,7 @@ export class SecurePRReview {
     });
     
     this.commentPoster = new CommentPoster({
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       octokit: this.octokit,
       config: this.config,
       logger: this.logger,
@@ -131,8 +128,6 @@ export class SecurePRReview {
       status: approved ? 'approved' : 'changes_requested',
       score: aiReview?.overallScore ?? 0,
       approved,
-      prAnalysis,
-      aiReview,
       securityIssues,
       performanceIssues: 0,
       filesAnalyzed: prAnalysis.filesChanged.length,
