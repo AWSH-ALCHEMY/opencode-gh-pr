@@ -37,8 +37,24 @@ export class AIReviewer {
 
   private async callAIAPI(prAnalysis: PRAnalysisResult): Promise<string> {
     const userContent = this.buildReviewContent(prAnalysis);
-    // The system message is now passed via the --prompt flag, as per the CLI documentation.
-    const systemMessage = this.config.get('system-message');
+    const systemMessage = `You are an expert code reviewer. Analyze the provided code changes and respond with a JSON object containing:
+          {
+            "summary": "Brief overview of changes",
+            "issues": [
+              {
+                "file": "path/to/file",
+                "line": 123,
+                "severity": "error|warning|info",
+                "category": "bug|security|performance|style|best-practice",
+                "message": "Issue description",
+                "suggestion": "How to fix"
+              }
+            ],
+            "overallScore": 1-10,
+            "approved": true|false,
+            "reviewComments": ["general comments"]
+          }
+          Focus on security, performance, and maintainability. Be constructive and specific.`;
 
     let output = '';
     let errorOutput = '';
@@ -90,7 +106,7 @@ ${prAnalysis.filesChanged.join('\n')}`;
           file: 'N/A',
           line: 0,
           severity: 'warning',
-          category: 'error-handling',
+          category: 'bug',
           message: `The AI reviewer encountered an error: ${error}`,
           suggestion: 'Check the action logs for more details.',
         },
