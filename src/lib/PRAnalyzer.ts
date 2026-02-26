@@ -22,6 +22,7 @@ export class PRAnalyzer {
 
   async analyze(): Promise<PRAnalysisResult> {
     this.logger.startGroup('📊 PR Analysis');
+    this.logger.info('Starting PR analysis...');
     try {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       const pullsApi = this.octokit.pulls as unknown as {
