@@ -51,7 +51,7 @@ export class AIReviewer {
       input: Buffer.from(fullPrompt, 'utf8'),
     };
 
-    const args = ['run', '-'];
+    const args = ['run', '-', '--format', 'json'];
     this.logger.info(`Running OpenCode CLI, piping prompt to stdin`);
 
     const exitCode = await exec('opencode', args, options);
