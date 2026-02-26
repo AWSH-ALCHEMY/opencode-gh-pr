@@ -14,7 +14,7 @@ jobs:
         run: npm ci --ignore-scripts
       - name: 'Build Action'
         run: npm run build
-      - uses: ./ # Uses an action in the root directory
+      - uses: AWSH-ALCHEMY/opencode-gh-pr@dogfood-test
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           ai-api-key: ${{ secrets.OPENCODE_API_KEY }}
