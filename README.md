@@ -1,3 +1,4 @@
+
 # 🚀 Secure PR Review Action - Dogfooding Guide
 
 This repository is now set up for **dogfooding** - using our own action to review itself. Follow these steps to see it in action.
@@ -56,3 +57,5 @@ This process proves that our action is not only functional but also robust enoug
 ---
 
 For more detailed instructions, refer to the [DOGFOODING.md](DOGFOODING.md) guide.
+
+This is a test change to trigger the dogfooding workflow.

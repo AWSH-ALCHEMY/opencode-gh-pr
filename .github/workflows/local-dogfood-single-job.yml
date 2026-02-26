@@ -1,0 +1,88 @@
+name: '🐕 Local Dogfood - Secure PR Review Action'
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'src/**'
+      - 'action.yml'
+      - 'package.json'
+      - 'Dockerfile*'
+
+concurrency:
+  group: dogfood-pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  dogfood-review:
+    name: '🐕 Dogfood Test'
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    
+    steps:
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: 'Setup Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: 'Install Dependencies'
+        run: npm ci --ignore-scripts
+      
+      - name: 'Run Linting'
+        run: npm run lint
+      
+      - name: 'Run Type Checking'
+        run: npm run typecheck
+      
+      - name: 'Run Tests'
+        run: npm test
+      
+      - name: 'Build Action'
+        run: npm run build
+
+      - name: 'Run Secure PR Review Action (Dogfood)'
+        id: dogfood-review
+        uses: ./  # Use the action from the current directory
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          ai-api-key: ${{ secrets.OPENCODE_API_KEY }}
+          ai-model: 'opencode-reviewer'
+          approved-threshold: '7'
+          max-diff-size: '1048576'
+          max-files: '100'
+          max-lines: '5000'
+          security-analysis: 'true'
+          performance-check: 'true'
+          documentation-check: 'true'
+          create-checks: 'true'
+          post-comments: 'true'
+          apply-labels: 'true'
+        
+        continue-on-error: true
+      
+      - name: 'Dogfood Results Summary'
+        if: always()
+        run: |
+          echo "🐕 Dogfood Test Results:"
+          echo "  Status: ${{ steps.dogfood-review.outputs.review-status }}"
+          echo "  Score: ${{ steps.dogfood-review.outputs.review-score }}/10"
+          echo "  Security Issues: ${{ steps.dogfood-review.outputs.security-issues }}"
+          echo "  Performance Issues: ${{ steps.dogfood-review.outputs.performance-issues }}"
+          echo "  Files Analyzed: ${{ steps.dogfood-review.outputs.files-analyzed }}"
+          echo "  Execution Time: ${{ steps.dogfood-review.outputs.execution-time }}s"
+          
+          if [ "${{ steps.dogfood-review.outcome }}" = "success" ]; then
+            echo "✅ Dogfood test passed!"
+          else
+            echo "⚠️ Dogfood test completed with warnings"
+          fi
