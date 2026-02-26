@@ -97,12 +97,18 @@ export class CommentPoster {
         body: taggedBody,
       });
     } else {
-      await this.octokit.issues.createComment({
+      try {
+      const result = await this.octokit.issues.createComment({
         owner: this.repo.owner,
         repo: this.repo.repo,
         issue_number: this.prNumber,
         body: taggedBody,
       });
+      this.logger.info(`Comment created: ${result.data.html_url}`);
+    } catch (error) {
+      this.logger.error(`Failed to create comment: ${error}`);
+      throw error;
+    }
     }
   }
   
