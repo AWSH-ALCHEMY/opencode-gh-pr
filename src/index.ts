@@ -41,7 +41,6 @@ async function run(): Promise<void> {
       octokit,
       config,
       logger,
-      prNumber: pr.number,
       repo: context.repo,
     });
     

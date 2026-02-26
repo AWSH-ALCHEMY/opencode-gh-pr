@@ -20,6 +20,7 @@ export class SecurePRReview {
   private readonly config: ActionConfig;
   private readonly logger: Logger;
   private readonly prNumber: number;
+  private readonly commitSha: string;
   private readonly repo: { owner: string; repo: string };
   
   private prAnalyzer: PRAnalyzer;
@@ -32,8 +33,9 @@ export class SecurePRReview {
     this.octokit = options.octokit as unknown as Octokit;
     this.config = options.config;
     this.logger = options.logger;
-    this.prNumber = options.prNumber;
     this.repo = options.repo;
+    this.prNumber = github.context.payload.pull_request.number;
+    this.commitSha = github.context.payload.pull_request.head.sha;
     
     this.prAnalyzer = new PRAnalyzer({
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
