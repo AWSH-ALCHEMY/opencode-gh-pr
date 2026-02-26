@@ -110,6 +110,10 @@ jobs:
     name: '🔐 Security Scan'
     runs-on: ubuntu-latest
     needs: secure-review
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
     if: |
       always() &&
       needs.secure-review.result == 'success' &&
