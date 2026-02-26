@@ -56,7 +56,6 @@ export class ActionConfig {
   private config: ActionConfigType;
   
   constructor() {
-    // Set default configuration
     this.config = {
       maxDiffSize: 1048576, // 1MB
       maxFiles: 100,
