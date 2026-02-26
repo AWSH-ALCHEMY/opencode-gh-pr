@@ -34,8 +34,11 @@ export class SecurePRReview {
     this.config = options.config;
     this.logger = options.logger;
     this.repo = options.repo;
+    if (!github.context.payload.pull_request) {
+      throw new Error('This action can only be run on Pull Requests.');
+    }
     this.prNumber = github.context.payload.pull_request.number;
-    this.commitSha = github.context.payload.pull_request.head.sha;
+    this.commitSha = github.context.payload.pull_request['head']['sha'];
     
     this.prAnalyzer = new PRAnalyzer({
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
