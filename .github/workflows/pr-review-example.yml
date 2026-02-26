@@ -16,14 +16,40 @@ concurrency:
 permissions:
   contents: read
   pull-requests: write
+  security-events: write
 
 jobs:
+  # ============================================
+  # Build the Action
+  # ============================================
+  build:
+    name: '🏗️ Build Action'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v4
+      - name: 'Setup Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: 'Install Dependencies'
+        run: npm ci --ignore-scripts
+      - name: 'Build Action'
+        run: npm run build
+      - name: 'Upload Build Artifacts'
+        uses: actions/upload-artifact@v4
+        with:
+          name: action-dist
+          path: dist/
+
   # ============================================
   # Main Review Job
   # ============================================
   secure-review:
     name: '🔒 Secure PR Review'
     runs-on: ubuntu-latest
+    needs: build
     if: github.event.pull_request.draft == false
     
     steps:
@@ -32,14 +58,18 @@ jobs:
         with:
           fetch-depth: 0
       
+      - name: 'Download Build Artifacts'
+        uses: actions/download-artifact@v4
+        with:
+          name: action-dist
+          path: dist/
+
       - name: 'Run Secure PR Review Action'
         id: review
         uses: ./
         with:
           # Core Configuration
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          ai-api-key: ${{ secrets.OPENCODE_API_KEY }}
-          ai-model: 'opencode-reviewer'
           
           # Review Configuration
           approved-threshold: '7'
@@ -88,12 +118,15 @@ jobs:
     steps:
       - name: 'Checkout Repository'
         uses: actions/checkout@v4
-      
+
+      - name: 'Initialize CodeQL'
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript, typescript, python
+
       - name: 'Run CodeQL Analysis'
         uses: github/codeql-action/analyze@v3
         continue-on-error: true
-        with:
-          languages: javascript, typescript, python
           
       - name: 'Run Secret Detection'
         uses: trufflesecurity/trufflehog@main
@@ -128,7 +161,7 @@ jobs:
             echo "Dependency changes detected"
             
             # List new dependencies
-            NEW_DEPS=$(git diff origin/${{ github.base_ref }} -- package.json 2>/dev/null | grep "^\\+" | grep -v "^\\+\\+" || true)
+            NEW_DEPS=$(git diff origin/${{ github.base_ref }} -- package.json 2>/dev/null | grep "^\+" | grep -v "^\+\+" || true)
             
             if [ -n "$NEW_DEPS" ]; then
               echo "New dependencies added:"
@@ -162,8 +195,8 @@ jobs:
           FILES=$(git diff --name-only origin/${{ github.base_ref }})
           
           # Check if code changes have corresponding doc updates
-          HAS_CODE_CHANGES=$(echo "$FILES" | grep -E "\\.(js|ts|jsx|tsx|py|go|rs|java)$" || true)
-          HAS_DOC_CHANGES=$(echo "$FILES" | grep -E "(README|CHANGELOG|docs/|\\.md$)" || true)
+          HAS_CODE_CHANGES=$(echo "$FILES" | grep -E "\.(js|ts|jsx|tsx|py|go|rs|java)$" || true)
+          HAS_DOC_CHANGES=$(echo "$FILES" | grep -E "(README|CHANGELOG|docs/|\.md$)" || true)
           
           if [ -n "$HAS_CODE_CHANGES" ] && [ -z "$HAS_DOC_CHANGES" ]; then
             echo "ℹ️ Code changes detected without documentation updates"
@@ -198,11 +231,3 @@ jobs:
           echo "| 📚 Documentation Check | ${{ needs.docs-check.result }} |"
           echo ""
           echo "---"
-          echo "*Professional security-focused review completed*"
-          
-          # Set overall status
-          if [ "${{ needs.secure-review.result }}" = "success" ]; then
-            echo "✅ **All security checks completed successfully**"
-          else
-            echo "⚠️ **Some checks require attention**"
-          fi
