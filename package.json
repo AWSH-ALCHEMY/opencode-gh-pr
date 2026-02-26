@@ -4,7 +4,7 @@
   "description": "Professional AI-powered pull request review with enterprise-grade security",
   "main": "dist/index.js",
   "scripts": {
-    "build": "ncc build src/index.ts -o dist --source-map",
+    "build": "ncc build src/index.ts -o dist --source-map && ncc build src/setup.ts -o dist/setup --source-map && ncc build src/cleanup.ts -o dist/cleanup --source-map",
     "test": "jest",
     "test:coverage": "jest --coverage",
     "lint": "eslint src/**/*.ts",

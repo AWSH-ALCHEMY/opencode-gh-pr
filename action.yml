@@ -20,3 +20,5 @@ inputs:
 runs:
   using: 'node20'
   main: 'dist/index.js'
+  pre: 'dist/setup/index.js'
+  post: 'dist/cleanup/index.js'
