@@ -34,39 +34,7 @@ export class AIReviewer {
   }
 
   private async callAIAPI(prAnalysis: PRAnalysisResult): Promise<string> {
-    const fullPrompt = this.buildReviewContent(prAnalysis);
-
-    let output = '';
-    let errorOutput = '';
-    const options: ExecOptions = {
-      listeners: {
-        stdout: (data: Buffer) => {
-          output += data.toString();
-        },
-        stderr: (data: Buffer) => {
-          errorOutput += data.toString();
-        },
-      },
-      ignoreReturnCode: true, // We handle errors manually by checking the output
-    };
-
-    const args = ['run', fullPrompt];
-    this.logger.info(`Running OpenCode CLI...`);
-
-    const exitCode = await exec('opencode', args, options);
-
-    if (exitCode !== 0) {
-      throw new Error(`OpenCode CLI failed with exit code ${exitCode}. Stderr: ${errorOutput}`);
-    }
-
-    if (errorOutput) {
-      this.logger.warn(`OpenCode CLI stderr: ${errorOutput}`);
-    }
-
-    return output;
-  }
-
-  private buildReviewContent(prAnalysis: PRAnalysisResult): string {
+    const userContent = this.buildReviewContent(prAnalysis);
     const systemMessage = `You are an expert code reviewer. Analyze the provided code changes and respond with a JSON object containing:
           {
             "summary": "Brief overview of changes",
@@ -86,7 +54,38 @@ export class AIReviewer {
           }
           Focus on security, performance, and maintainability. Be constructive and specific.`;
 
-    const userContent = `PR Analysis:
+    let output = '';
+    let errorOutput = '';
+    const options: ExecOptions = {
+      listeners: {
+        stdout: (data: Buffer) => {
+          output += data.toString();
+        },
+        stderr: (data: Buffer) => {
+          errorOutput += data.toString();
+        },
+      },
+      ignoreReturnCode: true, // We handle errors manually by checking the output
+    };
+
+    const args = ['run', userContent, '--prompt', systemMessage];
+    this.logger.info(`Running OpenCode CLI with args: ${args.join(' ')}`)
+
+    const exitCode = await exec('opencode', args, options);
+
+    if (exitCode !== 0) {
+      throw new Error(`OpenCode CLI failed with exit code ${exitCode}. Stderr: ${errorOutput}`);
+    }
+
+    if (errorOutput) {
+      this.logger.warn(`OpenCode CLI stderr: ${errorOutput}`);
+    }
+
+    return output;
+  }
+
+  private buildReviewContent(prAnalysis: PRAnalysisResult): string {
+    return `PR Analysis:
 - Files changed: ${prAnalysis.filesChanged.length}
 - Lines: +${prAnalysis.additions} -${prAnalysis.deletions}
 - Complexity: ${prAnalysis.complexity}
@@ -94,8 +93,6 @@ export class AIReviewer {
 
 Please provide a review of the following code changes:
 ${prAnalysis.filesChanged.join('\n')}`;
-
-    return `${systemMessage}\n\n${userContent}`.replace(/\n/g, ' ');
   }
 
   private createFallbackReview(error: string, commitSha: string): AIReviewResult {
