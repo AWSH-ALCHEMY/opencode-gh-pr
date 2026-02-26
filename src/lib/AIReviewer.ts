@@ -20,7 +20,9 @@ export class AIReviewer {
         return this.createFallbackReview('AI review returned an empty response.', commitSha);
       }
 
-      const reviewResult = JSON.parse(rawResponse) as AIReviewResult;
+      const reviewResult = JSON.parse(lastJson) as AIReviewResult;
+      reviewResult.issues = reviewResult.issues || [];
+      reviewResult.reviewComments = reviewResult.reviewComments || [];
       reviewResult.commitSha = commitSha; // Ensure commitSha is part of the final result
       this.logger.info('Successfully parsed AI review response.');
       return reviewResult;
