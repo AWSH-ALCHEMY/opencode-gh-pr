@@ -96,12 +96,23 @@ export class CommentPoster {
     });
   }
   
+  private mapSeverityToAnnotationLevel(severity: 'error' | 'warning' | 'info'): 'failure' | 'warning' | 'notice' {
+    switch (severity) {
+      case 'error':
+        return 'failure';
+      case 'warning':
+        return 'warning';
+      case 'info':
+        return 'notice';
+    }
+  }
+
   private async createCheckRun(review: AIReviewResult): Promise<void> {
     const annotations = (review.issues || []).map(issue => ({
       path: issue.file,
       start_line: issue.line,
       end_line: issue.line,
-      annotation_level: issue.severity === 'error' ? 'failure' : (issue.severity === 'info' ? 'notice' : 'warning'),
+      annotation_level: this.mapSeverityToAnnotationLevel(issue.severity),
       message: issue.message,
       title: issue.category,
     }));
