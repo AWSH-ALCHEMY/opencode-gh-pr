@@ -8,10 +8,6 @@ inputs:
     description: 'GitHub token for API access'
     required: false
   
-  ai-api-key:
-    description: 'AI service API key'
-    required: false
-  
   ai-model:
     description: 'AI model to use for review'
     required: false

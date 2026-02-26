@@ -40,16 +40,13 @@ const AIReviewResponseSchema = z.object({
 export class AIReviewer {
   private readonly config: ActionConfig;
   private readonly logger: Logger;
-  private readonly aiApiKey: string;
   
   constructor(options: {
     config: ActionConfig;
     logger: Logger;
-    aiApiKey: string;
   }) {
     this.config = options.config;
     this.logger = options.logger;
-    this.aiApiKey = options.aiApiKey;
   }
   
   async review(prAnalysis: PRAnalysisResult): Promise<AIReviewResult | null> {
@@ -92,24 +89,7 @@ export class AIReviewer {
       messages: [
         {
           role: 'system',
-          content: `You are an expert code reviewer. Analyze the provided code changes and respond with a JSON object containing:
-          {
-            "summary": "Brief overview of changes",
-            "issues": [
-              {
-                "file": "path/to/file",
-                "line": 123,
-                "severity": "error|warning|info",
-                "category": "bug|security|performance|style|best-practice",
-                "message": "Issue description",
-                "suggestion": "How to fix"
-              }
-            ],
-            "overallScore": 1-10,
-            "approved": true|false,
-            "reviewComments": ["general comments"]
-          }
-          Focus on security, performance, and maintainability. Be constructive and specific.`,
+          content: `You are an expert code reviewer. Analyze the provided code changes and respond with a JSON object.`,
         },
         {
           role: 'user',
@@ -145,7 +125,6 @@ Please review the code changes for security vulnerabilities, performance issues,
         prompt,
         {
           headers: {
-            'Authorization': `Bearer ${this.aiApiKey}`,
             'Content-Type': 'application/json',
           },
           timeout,

@@ -11,7 +11,6 @@ export interface SecurePRReviewOptions {
   octokit: Octokit;
   config: ActionConfig;
   logger: Logger;
-  aiApiKey: string;
   prNumber: number;
   repo: { owner: string; repo: string };
 }
@@ -20,7 +19,6 @@ export class SecurePRReview {
   private readonly octokit: Octokit;
   private readonly config: ActionConfig;
   private readonly logger: Logger;
-  private readonly aiApiKey: string;
   private readonly prNumber: number;
   private readonly repo: { owner: string; repo: string };
   
@@ -34,7 +32,6 @@ export class SecurePRReview {
     this.octokit = options.octokit as unknown as Octokit;
     this.config = options.config;
     this.logger = options.logger;
-    this.aiApiKey = options.aiApiKey;
     this.prNumber = options.prNumber;
     this.repo = options.repo;
     
@@ -50,7 +47,6 @@ export class SecurePRReview {
     this.aiReviewer = new AIReviewer({
       config: this.config,
       logger: this.logger,
-      aiApiKey: this.aiApiKey,
     });
     
     this.securityScanner = new SecurityScanner({
