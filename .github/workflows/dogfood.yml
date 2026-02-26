@@ -144,7 +144,7 @@ jobs:
       
       - name: 'Run Secure PR Review Action (Integration)'
         id: integration-review
-        uses: your-org/secure-pr-review-action@v1  # Use published version
+        uses: ./  # Use published version
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           ai-api-key: ${{ secrets.OPENCODE_API_KEY }}
