@@ -1,7 +1,7 @@
 import { ActionConfig } from './ActionConfig';
 import { Logger } from './Logger';
 import { PRAnalysisResult, AIReviewResult } from './types';
-import axios, { AxiosError } from 'axios';
+import { exec } from '@actions/exec';
 import { z } from 'zod';
 
 const AIReviewRequestSchema = z.object({
@@ -29,13 +29,7 @@ const AIResponseSchema = z.object({
   reviewComments: z.array(z.string()),
 });
 
-const AIReviewResponseSchema = z.object({
-  choices: z.array(z.object({
-    message: z.object({
-      content: z.string(),
-    }),
-  })),
-});
+
 
 export class AIReviewer {
   private readonly config: ActionConfig;
@@ -89,7 +83,24 @@ export class AIReviewer {
       messages: [
         {
           role: 'system',
-          content: `You are an expert code reviewer. Analyze the provided code changes and respond with a JSON object.`,
+          content: `You are an expert code reviewer. Analyze the provided code changes and respond with a JSON object containing:
+          {
+            "summary": "Brief overview of changes",
+            "issues": [
+              {
+                "file": "path/to/file",
+                "line": 123,
+                "severity": "error|warning|info",
+                "category": "bug|security|performance|style|best-practice",
+                "message": "Issue description",
+                "suggestion": "How to fix"
+              }
+            ],
+            "overallScore": 1-10,
+            "approved": true|false,
+            "reviewComments": ["general comments"]
+          }
+          Focus on security, performance, and maintainability. Be constructive and specific.`,
         },
         {
           role: 'user',
@@ -117,37 +128,17 @@ Please review the code changes for security vulnerabilities, performance issues,
   }
   
   private async callAIAPI(prompt: z.infer<typeof AIReviewRequestSchema>): Promise<string> {
-    const timeout = this.config.get('timeout');
-    
-    try {
-      const response = await axios.post(
-        'https://api.opencode.ai/v1/chat/completions',
-        prompt,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          timeout,
-          validateStatus: (status) => status >= 200 && status < 300,
-        }
-      );
-      
-      const validatedResponse = AIReviewResponseSchema.parse(response.data);
-      return validatedResponse.choices[0]?.message?.content ?? 'No response content';
-      
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        const axiosError = error as AxiosError;
-        if (axiosError.response) {
-          throw new Error(`AI API error: ${axiosError.response.status} - ${JSON.stringify(axiosError.response.data)}`);
-        } else if (axiosError.request) {
-          throw new Error(`AI API request failed: ${axiosError.message}`);
-        } else {
-          throw new Error(`AI API setup error: ${axiosError.message}`);
-        }
-      }
-      throw new Error(`AI API call failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
+    let output = '';
+    const options = {
+      listeners: {
+        stdout: (data: Buffer) => {
+          output += data.toString();
+        },
+      },
+    };
+
+    await exec('opencode', ['run', JSON.stringify(prompt)], options);
+    return output;
   }
   
   private parseReviewResponse(responseContent: string): AIReviewResult {
