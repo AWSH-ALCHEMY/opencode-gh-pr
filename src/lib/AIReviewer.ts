@@ -37,7 +37,7 @@ export class AIReviewer {
   }
 
   private async callAIAPI(prAnalysis: PRAnalysisResult): Promise<string> {
-    const fullPrompt = this.buildReviewContent(prAnalysis);
+    const fullPrompt = await this.buildReviewContent(prAnalysis);
 
     let output = '';
     let errorOutput = '';
@@ -78,7 +78,7 @@ export class AIReviewer {
     return lastJson;
   }
 
-  private buildReviewContent(prAnalysis: PRAnalysisResult): string {
+  private async buildReviewContent(prAnalysis: PRAnalysisResult): Promise<string> {
     const systemMessage = `You are an expert code reviewer. Analyze the provided code changes and respond with a JSON object containing:
           {
             "summary": "Brief overview of changes",
@@ -98,9 +98,39 @@ export class AIReviewer {
           }
           Focus on security, performance, and maintainability. Be constructive and specific.`;
 
-    const diff = await this.getDiff();\n\n    const userContent = `PR Analysis:\n- Files changed: ${prAnalysis.filesChanged.length}\n- Lines: +${prAnalysis.additions} -${prAnalysis.deletions}\n- Complexity: ${prAnalysis.complexity}\n- Security risks: ${prAnalysis.hasSecuritySensitiveFiles ? 'Yes' : 'No'}\n\nPlease provide a review of the following code changes:\n\n\`\`\`diff\n${diff}\n\`\`\`\n`;${prAnalysis.filesChanged.join('\n')}`;
+    const diff = await this.getDiff();
+
+    const userContent = `PR Analysis:
+- Files changed: ${prAnalysis.filesChanged.length}
+- Lines: +${prAnalysis.additions} -${prAnalysis.deletions}
+- Complexity: ${prAnalysis.complexity}
+- Security risks: ${prAnalysis.hasSecuritySensitiveFiles ? 'Yes' : 'No'}
+
+Please provide a review of the following code changes:
+
+\`\`\`diff
+${diff}
+\`\`\`
+`;
 
     return `${systemMessage}\n\n${userContent}`;
+  }
+
+  private async getDiff(): Promise<string> {
+    try {
+      let output = '';
+      await exec('git', ['diff', '--no-color'], {
+        listeners: {
+          stdout: (data: Buffer) => {
+            output += data.toString();
+          },
+        },
+      });
+      return output || 'No changes detected';
+    } catch (error) {
+      this.logger.warn('Failed to get git diff, using empty diff');
+      return 'No changes detected';
+    }
   }
 
   private createFallbackReview(error: string, commitSha: string): AIReviewResult {
