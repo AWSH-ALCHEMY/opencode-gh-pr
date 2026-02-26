@@ -15,8 +15,9 @@ concurrency:
 
 # Minimal permissions - principle of least privilege
 permissions:
-  contents: read
-  pull-requests: write
+      contents: read
+      pull-requests: write
+      checks: write
   security-events: write
 
 jobs:

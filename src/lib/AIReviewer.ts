@@ -198,7 +198,15 @@ Please review the code changes for security vulnerabilities, performance issues,
   
   private createFallbackReview(): AIReviewResult {
     this.logger.warn('Creating fallback review due to AI failure');
-    
+    return {
+      summary: 'AI review failed. Please review the code manually.',
+      issues: [],
+      overallScore: 5,
+      approved: false,
+      reviewComments: [],
+      commitSha: ''
+    };
+  }  
     return {
       summary: 'AI review unavailable - manual review required',
       issues: [],
