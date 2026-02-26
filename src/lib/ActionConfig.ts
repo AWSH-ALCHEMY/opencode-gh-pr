@@ -81,6 +81,7 @@ export class ActionConfig {
       postComments: true,
       applyLabels: true,
     };
+    this.load();
   }
   
   /**

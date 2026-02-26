@@ -19,7 +19,6 @@ async function run(): Promise<void> {
     
     // Load and validate configuration
     const config = new ActionConfig();
-    config.load();
     
     // Validate required inputs
     const githubToken = core.getInput('github-token', { required: true });
