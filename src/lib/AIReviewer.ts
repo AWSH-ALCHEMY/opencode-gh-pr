@@ -69,7 +69,7 @@ export class AIReviewer {
       input: Buffer.from(userContent, 'utf8'),
     };
 
-    const args = ['run', '--prompt', systemMessage];
+    const args = ['run', '-', '--prompt', systemMessage];
     this.logger.info(`Running OpenCode CLI with args: ${args.join(' ')}`)
 
     const exitCode = await exec('opencode', args, options);
