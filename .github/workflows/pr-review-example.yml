@@ -4,12 +4,13 @@ name: 'Secure PR Review - Professional Example'
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-  pull_request_review_comment:
-    types: [created]
+  push:
+    branches:
+      - main
 
 # Prevent concurrent reviews on the same PR
 concurrency:
-  group: secure-pr-review-${{ github.event.pull_request.number }}
+  group: secure-pr-review-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 # Minimal permissions - principle of least privilege
@@ -50,7 +51,7 @@ jobs:
     name: '🔒 Secure PR Review'
     runs-on: ubuntu-latest
     needs: build
-    if: github.event.pull_request.draft == false
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
     
     steps:
       - name: 'Checkout Repository'
@@ -116,20 +117,20 @@ jobs:
       actions: read
     if: |
       always() &&
-      needs.secure-review.result == 'success' &&
-      (github.event.pull_request.draft == false)
+      (github.event_name == 'pull_request' && github.event.pull_request.draft == false) ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
     
     steps:
       - name: 'Checkout Repository'
         uses: actions/checkout@v4
 
       - name: 'Initialize CodeQL'
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
-          languages: javascript, typescript, python
+          languages: javascript, typescript
 
       - name: 'Run CodeQL Analysis'
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         continue-on-error: true
           
       - name: 'Run Secret Detection'
@@ -150,22 +151,24 @@ jobs:
     if: |
       always() &&
       needs.secure-review.result == 'success' &&
-      (github.event.pull_request.draft == false)
+      (github.event_name == 'pull_request' && github.event.pull_request.draft == false)
     
     steps:
       - name: 'Checkout Repository'
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for all tags and branches
       
       - name: 'Analyze Bundle Size Impact'
         run: |
           echo "📦 Analyzing potential bundle size impact..."
           
           # Check for dependency changes
-          if git diff --name-only origin/${{ github.base_ref }} | grep -q "package.json\|package-lock.json\|yarn.lock\|pnpm-lock.yaml"; then
+          if git diff --name-only origin/${{ github.event.pull_request.base.ref }} | grep -q "package.json\|package-lock.json\|yarn.lock\|pnpm-lock.yaml"; then
             echo "Dependency changes detected"
             
             # List new dependencies
-            NEW_DEPS=$(git diff origin/${{ github.base_ref }} -- package.json 2>/dev/null | grep "^\\+" | grep -v "^\\+\\+" || true)
+            NEW_DEPS=$(git diff origin/${{ github.event.pull_request.base.ref }} -- package.json 2>/dev/null | grep "^\+" | grep -v "^\+\+" || true)
             
             if [ -n "$NEW_DEPS" ]; then
               echo "New dependencies added:"
@@ -183,7 +186,7 @@ jobs:
     if: |
       always() &&
       needs.secure-review.result == 'success' &&
-      (github.event.pull_request.draft == false)
+      (github.event_name == 'pull_request' && github.event.pull_request.draft == false)
     
     steps:
       - name: 'Checkout Repository'
@@ -196,7 +199,7 @@ jobs:
           echo "📚 Checking documentation..."
           
           # Get changed files
-          FILES=$(git diff --name-only origin/${{ github.base_ref }})
+          FILES=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }})
           
           # Check if code changes have corresponding doc updates
           HAS_CODE_CHANGES=$(echo "$FILES" | grep -E "\.(js|ts|jsx|tsx|py|go|rs|java)$" || true)
@@ -206,7 +209,7 @@ jobs:
             echo "ℹ️ Code changes detected without documentation updates"
             
             # Check if this is a significant change
-            LINES_CHANGED=$(git diff --numstat origin/${{ github.base_ref }} | awk '{s+=$1+$2} END {print s}')
+            LINES_CHANGED=$(git diff --numstat origin/${{ github.event.pull_request.base.ref }} | awk '{s+=$1+$2} END {print s}')
             
             if [ "$LINES_CHANGED" -gt 100 ]; then
               echo "📋 Significant code changes detected - consider updating documentation"
