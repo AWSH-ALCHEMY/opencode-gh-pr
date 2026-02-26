@@ -23,7 +23,7 @@ async function run(): Promise<void> {
     
     // Validate required inputs
     const githubToken = core.getInput('github-token', { required: true });
-    const aiApiKey = core.getInput('ai-api-key', { required: true });
+    const aiApiKey = core.getInput('ai-api-key', { required: false });
     
     // Initialize GitHub client
     const octokit = new Octokit({ auth: githubToken });
