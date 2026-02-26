@@ -66,9 +66,10 @@ export class AIReviewer {
         },
       },
       ignoreReturnCode: true, // We handle errors manually by checking the output
+      input: Buffer.from(userContent, 'utf8'),
     };
 
-    const args = ['run', userContent, '--prompt', systemMessage];
+    const args = ['run', '--prompt', systemMessage];
     this.logger.info(`Running OpenCode CLI with args: ${args.join(' ')}`)
 
     const exitCode = await exec('opencode', args, options);
