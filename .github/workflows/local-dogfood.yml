@@ -1,4 +1,4 @@
-name: 'Build and Test'
+name: '🐕 Local Dogfood - Secure PR Review Action'
 
 on:
   pull_request:
@@ -8,10 +8,18 @@ on:
       - 'package.json'
       - 'Dockerfile*'
 
+concurrency:
+  group: dogfood-pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
-  build-and-test:
-    name: '🏗️ Build & Test'
+  dogfood:
+    name: '🐕 Dogfood Test'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: write
     
     steps:
       - name: 'Checkout Repository'
@@ -37,9 +45,10 @@ jobs:
       
       - name: 'Build Action'
         run: npm run build
-
-      - name: 'Upload Build Artifacts'
-        uses: actions/upload-artifact@v4
+      
+      - name: 'Run Secure PR Review Action (Dogfood)'
+        id: dogfood-review
+        uses: ./  # Use the action from the current directory
         with:
-          name: action-dist
-          path: dist/
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
