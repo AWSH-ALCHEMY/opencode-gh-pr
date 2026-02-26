@@ -89,7 +89,7 @@ export class SecurePRReview {
       let aiReview: AIReviewResult | null = null;
       if (prAnalysis.shouldReview) {
         this.logger.info('Step 3/4: Performing AI code review...');
-        aiReview = await this.aiReviewer.review(prAnalysis);
+        aiReview = await this.aiReviewer.review(prAnalysis, this.commitSha);
         
         if (aiReview) {
           await this.commentPoster.postReview(aiReview);

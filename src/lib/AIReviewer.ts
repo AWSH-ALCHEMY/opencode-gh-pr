@@ -1,5 +1,5 @@
 
-import { exec } from '@actions/exec';
+import { exec, ExecOptions } from '@actions/exec';
 import { Logger } from './Logger';
 import { PRAnalysisResult, AIReviewResult } from './types';
 
@@ -10,23 +10,24 @@ export class AIReviewer {
     this.logger = options.logger;
   }
 
-  public async review(prAnalysis: PRAnalysisResult): Promise<AIReviewResult | null> {
+  public async review(prAnalysis: PRAnalysisResult, commitSha: string): Promise<AIReviewResult | null> {
     this.logger.startGroup('🧠 AI Code Review');
     try {
       const rawResponse = await this.callAIAPI(prAnalysis);
 
       if (!rawResponse) {
         this.logger.warn('AI review returned an empty response.');
-        return this.createFallbackReview('AI review returned an empty response.');
+        return this.createFallbackReview('AI review returned an empty response.', commitSha);
       }
 
       const reviewResult = JSON.parse(rawResponse) as AIReviewResult;
+      reviewResult.commitSha = commitSha; // Ensure commitSha is part of the final result
       this.logger.info('Successfully parsed AI review response.');
       return reviewResult;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.error(`AI review failed: ${errorMessage}`);
-      return this.createFallbackReview(errorMessage);
+      return this.createFallbackReview(errorMessage, commitSha);
     } finally {
       this.logger.endGroup();
     }
@@ -55,7 +56,7 @@ export class AIReviewer {
 
     let output = '';
     let errorOutput = '';
-    const options = {
+    const options: ExecOptions = {
       listeners: {
         stdout: (data: Buffer) => {
           output += data.toString();
@@ -65,10 +66,11 @@ export class AIReviewer {
         },
       },
       ignoreReturnCode: true, // We handle errors manually by checking the output
+      input: Buffer.from(userContent, 'utf8'),
     };
 
-    const args = ['run', userContent, '--prompt', systemMessage];
-    this.logger.info(`Running OpenCode CLI with args: ${args.join(' ')}`)
+    const args = ['run', '--prompt', systemMessage];
+    this.logger.info(`Running OpenCode CLI with prompt and user content via stdin.`);
 
     const exitCode = await exec('opencode', args, options);
 
@@ -94,7 +96,7 @@ Please provide a review of the following code changes:
 ${prAnalysis.filesChanged.join('\n')}`;
   }
 
-  private createFallbackReview(error: string): AIReviewResult {
+  private createFallbackReview(error: string, commitSha: string): AIReviewResult {
     this.logger.warn('Creating fallback review due to AI failure');
     return {
       summary: 'AI review failed. Please review the code manually.',
@@ -111,7 +113,7 @@ ${prAnalysis.filesChanged.join('\n')}`;
       overallScore: 3,
       approved: false,
       reviewComments: [],
-      commitSha: '',
+      commitSha: commitSha,
     };
   }
 }
