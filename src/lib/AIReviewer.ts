@@ -67,13 +67,21 @@ export class AIReviewer {
       this.logger.warn(`OpenCode CLI stderr: ${errorOutput}`);
     }
 
-    // The output can be a stream of concatenated JSON objects.
-    // We split them by inserting a newline between adjacent objects.
-    const jsonStream = output.replace(/}\s*{/g, '}\n{');
-    const jsonObjects = jsonStream.trim().split('\n');
+    const jsonMatch = output.match(/\{[\s\S]*\}/g);
+    if (!jsonMatch || jsonMatch.length === 0) {
+      throw new Error('No JSON found in OpenCode output');
+    }
 
-    // The last JSON object in the stream should be the final review.
-    const lastJson = jsonObjects[jsonObjects.length - 1] || '';
+    const lastJson = jsonMatch[jsonMatch.length - 1] ?? '';
+    if (!lastJson) {
+      throw new Error('No JSON found in OpenCode output');
+    }
+
+    try {
+      JSON.parse(lastJson);
+    } catch {
+      throw new Error(`Invalid JSON in OpenCode output: ${lastJson.substring(0, 200)}`);
+    }
 
     return lastJson;
   }
@@ -150,7 +158,7 @@ ${diff}
       overallScore: 3,
       approved: false,
       reviewComments: [],
-      commitSha: commitSha,
+      commitSha,
     };
   }
 }

@@ -106,7 +106,8 @@ export class CommentPoster {
       });
       this.logger.info(`Comment created: ${result.data.html_url}`);
     } catch (error) {
-      this.logger.error(`Failed to create comment: ${error}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to create comment: ${errorMessage}`);
       throw error;
     }
     }
