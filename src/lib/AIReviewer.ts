@@ -24,7 +24,6 @@ export class AIReviewer {
       reviewResult.issues = reviewResult.issues || [];
       reviewResult.reviewComments = reviewResult.reviewComments || [];
       reviewResult.summary = reviewResult.summary || 'AI analysis complete.';
-      reviewResult.overallScore = reviewResult.overallScore ?? 0;
       reviewResult.commitSha = commitSha; // Ensure commitSha is part of the final result
       this.logger.info('Successfully parsed AI review response.');
       return reviewResult;
