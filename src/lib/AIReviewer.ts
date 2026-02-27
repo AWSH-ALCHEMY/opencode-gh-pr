@@ -69,12 +69,30 @@ export class AIReviewer {
       this.logger.warn(`OpenCode CLI stderr: ${errorOutput}`);
     }
 
-    const jsonMatch = output.match(/\{[\s\S]*\}/g);
-    if (!jsonMatch || jsonMatch.length === 0) {
-      throw new Error('No JSON found in OpenCode output');
+    const lines = output.split('\n').filter(line => line.trim().length > 0);
+    let lastJson = '';
+    
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      if (trimmedLine.startsWith('{') && trimmedLine.endsWith('}')) {
+        try {
+          const parsed = JSON.parse(trimmedLine) as { type?: string };
+          if (parsed.type !== 'step_start' && parsed.type !== 'step_finish') {
+            lastJson = trimmedLine;
+          }
+        } catch {
+          continue;
+        }
+      }
     }
 
-    const lastJson = jsonMatch[jsonMatch.length - 1] ?? '';
+    if (!lastJson) {
+      const jsonMatch = output.match(/\{[\s\S]*?\}/g);
+      if (jsonMatch && jsonMatch.length > 0) {
+        lastJson = jsonMatch[jsonMatch.length - 1] ?? '';
+      }
+    }
+
     if (!lastJson) {
       throw new Error('No JSON found in OpenCode output');
     }
