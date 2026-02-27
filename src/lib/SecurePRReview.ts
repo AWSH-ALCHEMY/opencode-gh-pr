@@ -21,6 +21,7 @@ export class SecurePRReview {
   private readonly logger: Logger;
   private readonly prNumber: number;
   private readonly commitSha: string;
+  private readonly baseSha: string;
   private readonly repo: { owner: string; repo: string };
   
   private prAnalyzer: PRAnalyzer;
@@ -39,6 +40,8 @@ export class SecurePRReview {
     }
     this.prNumber = github.context.payload.pull_request.number;
     this.commitSha = github.context.sha;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment,@typescript-eslint/no-unsafe-member-access
+    this.baseSha = github.context.payload.pull_request['base'].sha;
     
     this.prAnalyzer = new PRAnalyzer({
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
@@ -51,6 +54,7 @@ export class SecurePRReview {
     
     this.aiReviewer = new AIReviewer({
       logger: this.logger,
+      baseSha: this.baseSha,
     });
     
     this.securityScanner = new SecurityScanner({

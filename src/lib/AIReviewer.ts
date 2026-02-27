@@ -5,9 +5,11 @@ import { PRAnalysisResult, AIReviewResult } from './types';
 
 export class AIReviewer {
   private readonly logger: Logger;
+  private readonly baseSha: string | undefined;
 
-  constructor(options: { logger: Logger }) {
+  constructor(options: { logger: Logger; baseSha?: string }) {
     this.logger = options.logger;
+    this.baseSha = options.baseSha;
   }
 
   public async review(prAnalysis: PRAnalysisResult, commitSha: string): Promise<AIReviewResult | null> {
@@ -127,7 +129,13 @@ ${diff}
   private async getDiff(): Promise<string> {
     try {
       let output = '';
-      await exec('git', ['diff', '--no-color'], {
+      const args: string[] = ['diff', '--no-color'];
+      
+      if (this.baseSha) {
+        args.push(`${this.baseSha}...HEAD`);
+      }
+      
+      await exec('git', args, {
         listeners: {
           stdout: (data: Buffer) => {
             output += data.toString();
