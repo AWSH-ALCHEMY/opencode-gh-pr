@@ -59,3 +59,7 @@ This process proves that our action is not only functional but also robust enoug
 For more detailed instructions, refer to the [DOGFOODING.md](DOGFOODING.md) guide.
 
 This is a test change to trigger the dogfooding workflow.
+
+## Architecture Notes
+
+- [`/code_apply` child PR design](docs/code-apply-child-pr-design.md)
