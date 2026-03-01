@@ -3,6 +3,7 @@ import { ActionConfig } from './ActionConfig';
 import { Logger } from './Logger';
 import { AIReviewResult, ReviewResult } from './types';
 import { SecurityScanResult } from './SecurityScanner';
+import * as path from 'path';
 
 export class CommentPoster {
   private readonly octokit: Octokit;
@@ -141,8 +142,8 @@ export class CommentPoster {
     }
   }
 
-  private parseAddedLinesFromPatch(patch: string): Set<number> {
-    const addedLines = new Set<number>();
+  private parseRightSideLinesFromPatch(patch: string): Set<number> {
+    const rightSideLines = new Set<number>();
     const lines = patch.split('\n');
     let newLine = 0;
 
@@ -158,16 +159,47 @@ export class CommentPoster {
       }
 
       if (line.startsWith('+') && !line.startsWith('+++')) {
-        addedLines.add(newLine);
+        rightSideLines.add(newLine);
         newLine += 1;
       } else if (line.startsWith('-') && !line.startsWith('---')) {
         // Removed line does not advance new file line cursor
-      } else {
+      } else if (line.startsWith(' ')) {
+        rightSideLines.add(newLine);
         newLine += 1;
+      } else if (line.startsWith('\\ No newline at end of file')) {
+        // Metadata line, ignore.
+      } else {
+        // Skip patch metadata lines.
       }
     }
 
-    return addedLines;
+    return rightSideLines;
+  }
+
+  private resolveIssuePath(rawPath: string, changedFiles: string[]): string | null {
+    const normalized = rawPath.replace(/^a\//, '').replace(/^b\//, '').trim();
+    if (!normalized) {
+      return null;
+    }
+
+    if (changedFiles.includes(normalized)) {
+      return normalized;
+    }
+
+    const baseName = path.basename(normalized);
+    const byBaseName = changedFiles.filter(f => path.basename(f) === baseName);
+    if (byBaseName.length === 1) {
+      return byBaseName[0] || null;
+    }
+
+    const byContains = changedFiles.find(f => f.endsWith(normalized) || normalized.endsWith(f));
+    return byContains || null;
+  }
+
+  private findNearestLine(target: number, candidates: number[]): number {
+    return candidates.reduce((best, current) =>
+      Math.abs(current - target) < Math.abs(best - target) ? current : best
+    );
   }
 
   private async postInlineReviewComments(review: AIReviewResult): Promise<void> {
@@ -196,24 +228,30 @@ export class CommentPoster {
       per_page: 100,
     });
 
-    const addedLinesByFile = new Map<string, Set<number>>();
+    const changedFiles = filesResponse.map(f => f.filename);
+    const rightSideLinesByFile = new Map<string, Set<number>>();
     for (const f of filesResponse) {
       if (typeof f.patch === 'string') {
-        addedLinesByFile.set(f.filename, this.parseAddedLinesFromPatch(f.patch));
+        rightSideLinesByFile.set(f.filename, this.parseRightSideLinesFromPatch(f.patch));
       }
     }
 
     const inlineComments = (review.issues || [])
       .filter(issue => issue.file && issue.file !== 'N/A' && issue.line > 0)
       .map(issue => {
-        const lines = addedLinesByFile.get(issue.file);
+        const resolvedPath = this.resolveIssuePath(issue.file, changedFiles);
+        if (!resolvedPath) {
+          return null;
+        }
+
+        const lines = rightSideLinesByFile.get(resolvedPath);
         if (!lines || lines.size === 0) {
           return null;
         }
         const sortedLines = Array.from(lines).sort((a, b) => a - b);
-        const targetLine = lines.has(issue.line) ? issue.line : sortedLines[0];
+        const targetLine = lines.has(issue.line) ? issue.line : this.findNearestLine(issue.line, sortedLines);
         return {
-          path: issue.file,
+          path: resolvedPath,
           line: targetLine,
           side: 'RIGHT' as const,
           body: `**[${issue.severity.toUpperCase()}]** ${issue.message}\n\nSuggestion: ${issue.suggestion}`,

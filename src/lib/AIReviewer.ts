@@ -2,6 +2,7 @@
 import { exec, ExecOptions } from '@actions/exec';
 import { Logger } from './Logger';
 import { PRAnalysisResult, AIReviewResult } from './types';
+import * as path from 'path';
 
 export class AIReviewer {
   private readonly logger: Logger;
@@ -23,7 +24,7 @@ export class AIReviewer {
       }
 
       const reviewResult = JSON.parse(rawResponse) as AIReviewResult;
-      reviewResult.issues = reviewResult.issues || [];
+      reviewResult.issues = this.normalizeIssues(reviewResult.issues, prAnalysis.filesChanged);
       reviewResult.reviewComments = reviewResult.reviewComments || [];
       reviewResult.summary = reviewResult.summary || 'AI analysis complete.';
       reviewResult.commitSha = commitSha; // Ensure commitSha is part of the final result
@@ -186,5 +187,76 @@ ${diff}
       reviewComments: [],
       commitSha,
     };
+  }
+
+  private normalizeIssues(rawIssues: unknown, changedFiles: string[]): AIReviewResult['issues'] {
+    if (!Array.isArray(rawIssues)) {
+      return [];
+    }
+
+    return rawIssues
+      .map((rawIssue) => {
+        const issue = rawIssue as Record<string, unknown>;
+        const rawFile = typeof issue['file'] === 'string' ? issue['file'] : 'N/A';
+        const normalizedFile = this.resolveIssueFile(rawFile, changedFiles);
+        const normalizedLine = this.normalizeLine(issue['line']);
+        const severity: AIReviewResult['issues'][number]['severity'] =
+          issue['severity'] === 'error' || issue['severity'] === 'warning' || issue['severity'] === 'info'
+          ? issue['severity']
+          : 'warning';
+        const category: AIReviewResult['issues'][number]['category'] =
+          issue['category'] === 'bug' || issue['category'] === 'security' || issue['category'] === 'performance' || issue['category'] === 'style' || issue['category'] === 'best-practice'
+          ? issue['category']
+          : 'bug';
+
+        return {
+          file: normalizedFile,
+          line: normalizedLine,
+          severity,
+          category,
+          message: typeof issue['message'] === 'string' ? issue['message'] : 'Potential issue detected',
+          suggestion: typeof issue['suggestion'] === 'string' ? issue['suggestion'] : 'Review this section manually.',
+        };
+      })
+      .filter(issue => issue.file !== 'N/A' && issue.line > 0);
+  }
+
+  private normalizeLine(rawLine: unknown): number {
+    if (typeof rawLine === 'number' && Number.isFinite(rawLine)) {
+      return Math.max(1, Math.floor(rawLine));
+    }
+
+    if (typeof rawLine === 'string') {
+      const firstNumber = rawLine.match(/\d+/)?.[0];
+      if (firstNumber) {
+        return Math.max(1, parseInt(firstNumber, 10));
+      }
+    }
+
+    return 0;
+  }
+
+  private resolveIssueFile(rawFile: string, changedFiles: string[]): string {
+    const cleaned = rawFile.replace(/^a\//, '').replace(/^b\//, '').trim();
+    if (!cleaned || cleaned === 'N/A') {
+      return 'N/A';
+    }
+
+    if (changedFiles.includes(cleaned)) {
+      return cleaned;
+    }
+
+    const cleanedBase = path.basename(cleaned);
+    const baseMatches = changedFiles.filter(f => path.basename(f) === cleanedBase);
+    if (baseMatches.length === 1) {
+      return baseMatches[0] || 'N/A';
+    }
+
+    const containsMatch = changedFiles.find(f => f.endsWith(cleaned) || cleaned.endsWith(f));
+    if (containsMatch) {
+      return containsMatch;
+    }
+
+    return 'N/A';
   }
 }
