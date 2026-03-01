@@ -508,6 +508,7 @@ jobs:
       - name: "Create child PR"
         id: child_pr
         if: steps.opencode.outcome == 'success' && steps.commit.outputs.changed == 'true'
+        continue-on-error: true
         uses: actions/github-script@v7
         env:
           TARGET_IDS_JSON: ${{ needs.resolve-command.outputs.target_ids_json }}
@@ -606,7 +607,9 @@ jobs:
             const forceAck = '${{ needs.resolve-command.outputs.force_ack }}' === 'true';
             const childPrUrl = '${{ steps.child_pr.outputs.url }}' || '';
             const childPrNumber = '${{ steps.child_pr.outputs.number }}' || '';
+            const childPrOutcome = '${{ steps.child_pr.outcome }}';
             const applyBranch = '${{ steps.branch.outputs.name }}' || '';
+            const baseRef = '${{ needs.resolve-command.outputs.head_ref }}' || '';
             const commitSha = '${{ steps.commit.outputs.commit_sha }}' || '';
             const hasRestricted = String('${{ steps.restricted.outputs.has_restricted }}').trim().toLowerCase() === 'true';
             const restrictedFilesOutput = ${{ toJSON(steps.restricted.outputs.restricted_files_json) }};
@@ -629,6 +632,10 @@ jobs:
               body = `✅ Applied fixes for ${count} comment(s) via \`/code_apply\` on isolated branch \`${applyBranch}\`.`;
               if (childPrUrl) {
                 body += `\n\nChild PR: ${childPrUrl}${childPrNumber ? ` (#${childPrNumber})` : ''}`;
+              }
+              if (childPrOutcome !== 'success') {
+                const compareUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/compare/${encodeURIComponent(baseRef)}...${encodeURIComponent(applyBranch)}?expand=1`;
+                body += `\n\n⚠️ Child PR creation was blocked by repository settings or token policy. Compare branch manually: ${compareUrl}`;
               }
               if (commitSha) {
                 body += `\nCommit: \`${commitSha}\``;
