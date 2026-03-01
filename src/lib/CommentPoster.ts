@@ -27,6 +27,7 @@ export class CommentPoster {
       if (this.config.get('postComments')) {
         const summaryComment = this.buildReviewComment(review);
         await this.upsertComment(summaryComment, 'ai-review-comment');
+        await this.postInlineReviewComments(review);
       }
       
       if (this.config.get('createChecks')) {
@@ -138,6 +139,118 @@ export class CommentPoster {
       case 'info':
         return 'notice';
     }
+  }
+
+  private parseAddedLinesFromPatch(patch: string): Set<number> {
+    const addedLines = new Set<number>();
+    const lines = patch.split('\n');
+    let newLine = 0;
+
+    for (const line of lines) {
+      const hunkMatch = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      if (hunkMatch) {
+        const hunkStart = hunkMatch[1];
+        if (!hunkStart) {
+          continue;
+        }
+        newLine = parseInt(hunkStart, 10);
+        continue;
+      }
+
+      if (line.startsWith('+') && !line.startsWith('+++')) {
+        addedLines.add(newLine);
+        newLine += 1;
+      } else if (line.startsWith('-') && !line.startsWith('---')) {
+        // Removed line does not advance new file line cursor
+      } else {
+        newLine += 1;
+      }
+    }
+
+    return addedLines;
+  }
+
+  private async postInlineReviewComments(review: AIReviewResult): Promise<void> {
+    const marker = `<!-- ai-inline-review:${review.commitSha} -->`;
+
+    const existingReviews = await this.octokit.paginate(this.octokit.pulls.listReviews, {
+      owner: this.repo.owner,
+      repo: this.repo.repo,
+      pull_number: this.prNumber,
+    });
+
+    const alreadyPosted = existingReviews.some(r =>
+      (r.user?.login === 'github-actions[bot]' || r.user?.login === 'github-actions') &&
+      (r.body || '').includes(marker)
+    );
+
+    if (alreadyPosted) {
+      this.logger.info(`Inline review already posted for commit ${review.commitSha}, skipping.`);
+      return;
+    }
+
+    const filesResponse = await this.octokit.paginate(this.octokit.pulls.listFiles, {
+      owner: this.repo.owner,
+      repo: this.repo.repo,
+      pull_number: this.prNumber,
+      per_page: 100,
+    });
+
+    const addedLinesByFile = new Map<string, Set<number>>();
+    for (const f of filesResponse) {
+      if (typeof f.patch === 'string') {
+        addedLinesByFile.set(f.filename, this.parseAddedLinesFromPatch(f.patch));
+      }
+    }
+
+    const inlineComments = (review.issues || [])
+      .filter(issue => issue.file && issue.file !== 'N/A' && issue.line > 0)
+      .filter(issue => {
+        const lines = addedLinesByFile.get(issue.file);
+        return !!lines && lines.has(issue.line);
+      })
+      .slice(0, 30)
+      .map(issue => ({
+        path: issue.file,
+        line: issue.line,
+        side: 'RIGHT' as const,
+        body: `**[${issue.severity.toUpperCase()}]** ${issue.message}\n\nSuggestion: ${issue.suggestion}`,
+      }));
+
+    if (inlineComments.length === 0) {
+      this.logger.info('No valid inline comment targets found in PR diff; skipping inline review comments.');
+      return;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const pullsApi = this.octokit.pulls as unknown as {
+      createReview: (params: {
+        owner: string;
+        repo: string;
+        pull_number: number;
+        commit_id: string;
+        event: 'COMMENT';
+        body: string;
+        comments: Array<{
+          path: string;
+          line: number;
+          side: 'RIGHT';
+          body: string;
+        }>;
+      }) => Promise<unknown>;
+    };
+
+    await pullsApi.createReview({
+      owner: this.repo.owner,
+      repo: this.repo.repo,
+      pull_number: this.prNumber,
+      commit_id: review.commitSha,
+      event: 'COMMENT',
+      body: `## 🤖 AI Inline Review\n\nPosted ${inlineComments.length} inline comments for this commit.\n\n${marker}`,
+      comments: inlineComments,
+    });
+
+    this.logger.info(`Inline review comments posted: ${inlineComments.length}`);
   }
 
   private async createCheckRun(review: AIReviewResult): Promise<void> {
