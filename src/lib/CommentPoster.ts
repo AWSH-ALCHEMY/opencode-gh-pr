@@ -205,17 +205,25 @@ export class CommentPoster {
 
     const inlineComments = (review.issues || [])
       .filter(issue => issue.file && issue.file !== 'N/A' && issue.line > 0)
-      .filter(issue => {
+      .map(issue => {
         const lines = addedLinesByFile.get(issue.file);
-        return !!lines && lines.has(issue.line);
+        if (!lines || lines.size === 0) {
+          return null;
+        }
+        const sortedLines = Array.from(lines).sort((a, b) => a - b);
+        const targetLine = lines.has(issue.line) ? issue.line : sortedLines[0];
+        return {
+          path: issue.file,
+          line: targetLine,
+          side: 'RIGHT' as const,
+          body: `**[${issue.severity.toUpperCase()}]** ${issue.message}\n\nSuggestion: ${issue.suggestion}`,
+        };
       })
-      .slice(0, 30)
-      .map(issue => ({
-        path: issue.file,
-        line: issue.line,
-        side: 'RIGHT' as const,
-        body: `**[${issue.severity.toUpperCase()}]** ${issue.message}\n\nSuggestion: ${issue.suggestion}`,
-      }));
+      .filter((comment): comment is { path: string; line: number; side: 'RIGHT'; body: string } => comment !== null)
+      .filter((comment, index, all) =>
+        all.findIndex(c => c.path === comment.path && c.line === comment.line && c.body === comment.body) === index
+      )
+      .slice(0, 30);
 
     if (inlineComments.length === 0) {
       this.logger.info('No valid inline comment targets found in PR diff; skipping inline review comments.');
