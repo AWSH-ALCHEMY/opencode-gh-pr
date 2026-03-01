@@ -77,6 +77,24 @@ Result: source PR branch remains human-owned; AI changes are reviewed in an isol
 - Keep restricted workflow-file revert logic
 - Keep timeout and failure feedback commenting
 
+## Policy Configuration
+
+Policy is defined in `.github/code-apply-policy.json` with:
+
+- `activeProfile`: selected profile name
+- `profiles`: map of profile objects
+
+Supported profile fields:
+
+- `allowedAuthorAssociations` (array): allowed values include `OWNER`, `MEMBER`, `COLLABORATOR`, `CONTRIBUTOR`
+- `requireLabel` (string): label that must exist on source PR to allow `/code_apply`
+- `allowAll` (boolean): whether `/code_apply --all` is allowed
+- `maxCommentsPerRun` (number): hard cap on target comments per command
+
+Security note:
+
+- Workflow loads this policy file from the repository default branch (`main` in most repos), not from the PR head branch.
+
 ## Workflow Architecture
 
 Use current `.github/workflows/code-apply.yml` with a two-job structure plus child-PR creation:

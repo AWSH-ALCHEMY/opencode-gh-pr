@@ -63,3 +63,4 @@ This is a test change to trigger the dogfooding workflow.
 ## Architecture Notes
 
 - [`/code_apply` child PR design](docs/code-apply-child-pr-design.md)
+- [`/code_apply` policy config](.github/code-apply-policy.json)

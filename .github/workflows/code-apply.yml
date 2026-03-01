@@ -23,6 +23,8 @@ jobs:
       is_fork: ${{ steps.resolve.outputs.is_fork }}
       target_ids_json: ${{ steps.resolve.outputs.target_ids_json }}
       feedback: ${{ steps.resolve.outputs.feedback }}
+      policy_profile: ${{ steps.resolve.outputs.policy_profile }}
+      policy_source: ${{ steps.resolve.outputs.policy_source }}
     steps:
       - name: "Parse command and validate context"
         id: resolve
@@ -44,20 +46,95 @@ jobs:
             setOutput('is_fork', '');
             setOutput('target_ids_json', '[]');
             setOutput('feedback', '');
+            setOutput('policy_profile', '');
+            setOutput('policy_source', '');
 
             if (!match) {
               return;
             }
 
-            const disallowed = ['NONE', 'FIRST_TIME_CONTRIBUTOR', 'FIRST_TIMER'];
-            const assoc = comment?.author_association || 'NONE';
-            if (disallowed.includes(assoc)) {
-              setOutput('feedback', 'Only repository collaborators can use `/code_apply`.');
+            if (comment?.user?.type === 'Bot') {
+              setOutput('feedback', 'Ignoring bot command comment.');
               return;
             }
 
-            if (comment?.user?.type === 'Bot') {
-              setOutput('feedback', 'Ignoring bot command comment.');
+            const defaultPolicy = {
+              version: 1,
+              activeProfile: 'balanced',
+              profiles: {
+                balanced: {
+                  allowedAuthorAssociations: ['OWNER', 'MEMBER', 'COLLABORATOR'],
+                  requireLabel: '',
+                  allowAll: true,
+                  maxCommentsPerRun: 50,
+                },
+              },
+            };
+            const policyPath = '.github/code-apply-policy.json';
+            const defaultBranch = payload.repository?.default_branch || 'main';
+
+            const normalizeProfile = (raw) => {
+              const allowedRaw = Array.isArray(raw?.allowedAuthorAssociations)
+                ? raw.allowedAuthorAssociations
+                : defaultPolicy.profiles.balanced.allowedAuthorAssociations;
+              const allowedAuthorAssociations = Array.from(
+                new Set(
+                  allowedRaw
+                    .map((value) => String(value).trim().toUpperCase())
+                    .filter((value) => value.length > 0)
+                )
+              );
+              const requireLabel = typeof raw?.requireLabel === 'string' ? raw.requireLabel.trim() : '';
+              const allowAll = typeof raw?.allowAll === 'boolean' ? raw.allowAll : defaultPolicy.profiles.balanced.allowAll;
+              const maxCommentsPerRunRaw = Number(raw?.maxCommentsPerRun);
+              const maxCommentsPerRun = Number.isInteger(maxCommentsPerRunRaw) && maxCommentsPerRunRaw > 0
+                ? maxCommentsPerRunRaw
+                : defaultPolicy.profiles.balanced.maxCommentsPerRun;
+              return {
+                allowedAuthorAssociations,
+                requireLabel,
+                allowAll,
+                maxCommentsPerRun,
+              };
+            };
+
+            let policyDoc = defaultPolicy;
+            try {
+              const contentResponse = await github.rest.repos.getContent({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                path: policyPath,
+                ref: defaultBranch,
+              });
+              if (!Array.isArray(contentResponse.data) && typeof contentResponse.data.content === 'string') {
+                const decoded = Buffer.from(contentResponse.data.content, 'base64').toString('utf8');
+                const parsed = JSON.parse(decoded);
+                const activeProfile = typeof parsed?.activeProfile === 'string' ? parsed.activeProfile : defaultPolicy.activeProfile;
+                const profiles = parsed?.profiles && typeof parsed.profiles === 'object' ? parsed.profiles : defaultPolicy.profiles;
+                policyDoc = {
+                  version: Number(parsed?.version) || defaultPolicy.version,
+                  activeProfile,
+                  profiles,
+                };
+              } else {
+                core.warning(`Policy file at ${policyPath} on ${defaultBranch} is not a file. Using defaults.`);
+              }
+            } catch (error) {
+              core.warning(`Unable to load ${policyPath} from ${defaultBranch}. Using defaults. ${error instanceof Error ? error.message : String(error)}`);
+            }
+
+            const profileName = String(policyDoc.activeProfile || defaultPolicy.activeProfile);
+            const rawProfile = policyDoc.profiles?.[profileName] || defaultPolicy.profiles.balanced;
+            const profile = normalizeProfile(rawProfile);
+            setOutput('policy_profile', profileName);
+            setOutput('policy_source', `${defaultBranch}:${policyPath}`);
+
+            const assoc = String(comment?.author_association || 'NONE').toUpperCase();
+            if (!profile.allowedAuthorAssociations.includes(assoc)) {
+              setOutput(
+                'feedback',
+                `Author association \`${assoc}\` is not allowed by policy profile \`${profileName}\`. Allowed: ${profile.allowedAuthorAssociations.join(', ')}.`
+              );
               return;
             }
 
@@ -91,6 +168,19 @@ jobs:
             if (isFork) {
               setOutput('feedback', 'Cannot apply changes automatically for forked PRs with default token permissions.');
               return;
+            }
+
+            if (profile.requireLabel) {
+              const labels = pr.data.labels
+                .map((label) => (typeof label === 'string' ? label : label?.name || ''))
+                .filter((label) => label.length > 0);
+              if (!labels.includes(profile.requireLabel)) {
+                setOutput(
+                  'feedback',
+                  `Policy profile \`${profileName}\` requires label \`${profile.requireLabel}\` before running \`/code_apply\`.`
+                );
+                return;
+              }
             }
 
             const arg = (match[1] || '').trim();
@@ -129,6 +219,10 @@ jobs:
                 return;
               }
             } else if (arg === '--all') {
+              if (!profile.allowAll) {
+                setOutput('feedback', `\`/code_apply --all\` is disabled by policy profile \`${profileName}\`.`);
+                return;
+              }
               const allReviewComments = await github.paginate(
                 github.rest.pulls.listReviewComments,
                 {
@@ -156,6 +250,14 @@ jobs:
               }
             } else {
               setOutput('feedback', 'Invalid command. Use `/code_apply`, `/code_apply <comment_id>`, or `/code_apply --all`.');
+              return;
+            }
+
+            if (targetIds.length > profile.maxCommentsPerRun) {
+              setOutput(
+                'feedback',
+                `Requested ${targetIds.length} comments exceeds policy max (${profile.maxCommentsPerRun}) for profile \`${profileName}\`.`
+              );
               return;
             }
 
@@ -322,6 +424,7 @@ jobs:
             const opencodeOutcome = '${{ steps.opencode.outcome }}';
             const changed = '${{ steps.commit.outputs.changed }}' === 'true';
             const count = '${{ steps.collect.outputs.count }}';
+            const policyProfile = '${{ needs.resolve-command.outputs.policy_profile }}' || 'unknown';
             const hasRestricted = String('${{ steps.restricted.outputs.has_restricted }}').trim().toLowerCase() === 'true';
             const restrictedFilesOutput = ${{ toJSON(steps.restricted.outputs.restricted_files_json) }};
             let restrictedFiles = [];
@@ -347,6 +450,7 @@ jobs:
             if (hasRestricted && restrictedFiles.length > 0) {
               body += `\n\n⚠️ Workflow file edits were detected and intentionally skipped to avoid GitHub permission rejection:\n${restrictedFiles.map(f => `- \`${f}\``).join('\n')}`;
             }
+            body += `\n\nPolicy profile: \`${policyProfile}\``;
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
