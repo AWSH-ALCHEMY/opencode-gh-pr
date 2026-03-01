@@ -225,11 +225,6 @@ export class CommentPoster {
       )
       .slice(0, 30);
 
-    if (inlineComments.length === 0) {
-      this.logger.info('No valid inline comment targets found in PR diff; skipping inline review comments.');
-      return;
-    }
-
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const pullsApi = this.octokit.pulls as unknown as {
       createReview: (params: {
@@ -239,7 +234,7 @@ export class CommentPoster {
         commit_id: string;
         event: 'COMMENT';
         body: string;
-        comments: Array<{
+        comments?: Array<{
           path: string;
           line: number;
           side: 'RIGHT';
@@ -247,6 +242,19 @@ export class CommentPoster {
         }>;
       }) => Promise<unknown>;
     };
+
+    if (inlineComments.length === 0) {
+      await pullsApi.createReview({
+        owner: this.repo.owner,
+        repo: this.repo.repo,
+        pull_number: this.prNumber,
+        commit_id: review.commitSha,
+        event: 'COMMENT',
+        body: `## 🤖 AI Review (No Inline Targets)\n\nNo valid inline diff locations were found, so this review was posted without inline anchors.\n\n${marker}`,
+      });
+      this.logger.info('Posted PR review without inline anchors.');
+      return;
+    }
 
     await pullsApi.createReview({
       owner: this.repo.owner,
