@@ -187,6 +187,7 @@ jobs:
     if: needs.resolve-command.outputs.should_apply == 'true'
     needs: [resolve-command]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
       pull-requests: write
@@ -240,6 +241,9 @@ jobs:
             core.setOutput('path', promptPath);
 
       - name: "Run OpenCode apply"
+        id: opencode
+        continue-on-error: true
+        timeout-minutes: 15
         run: |
           cat > /tmp/code_apply_prompt.txt <<'PROMPT'
           You are modifying this checked-out repository in-place.
@@ -252,10 +256,11 @@ jobs:
           - Do not change git history and do not add generated summaries to source files.
           Return a concise summary of what you changed.
           PROMPT
-          opencode run - --format json < /tmp/code_apply_prompt.txt
+          timeout 900 opencode run - --format json < /tmp/code_apply_prompt.txt
 
       - name: "Commit and push if changed"
         id: commit
+        if: steps.opencode.outcome == 'success'
         run: |
           if git diff --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -269,15 +274,22 @@ jobs:
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
       - name: "Post result comment"
+        if: always()
         uses: actions/github-script@v7
         with:
           script: |
+            const opencodeOutcome = '${{ steps.opencode.outcome }}';
             const changed = '${{ steps.commit.outputs.changed }}' === 'true';
             const count = '${{ steps.collect.outputs.count }}';
             const prNumber = Number('${{ needs.resolve-command.outputs.pr_number }}');
-            const body = changed
-              ? `✅ Applied fixes for ${count} comment(s) via \`/code_apply\` and pushed an update to this PR branch.`
-              : `ℹ️ \`/code_apply\` ran for ${count} comment(s), but no file changes were produced.`;
+            let body = '';
+            if (opencodeOutcome !== 'success') {
+              body = `❌ \`/code_apply\` failed while running OpenCode for ${count} comment(s). Check workflow logs.`;
+            } else if (changed) {
+              body = `✅ Applied fixes for ${count} comment(s) via \`/code_apply\` and pushed an update to this PR branch.`;
+            } else {
+              body = `ℹ️ \`/code_apply\` ran for ${count} comment(s), but no file changes were produced.`;
+            }
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
