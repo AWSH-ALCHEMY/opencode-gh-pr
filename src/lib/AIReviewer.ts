@@ -27,6 +27,8 @@ export class AIReviewer {
       reviewResult.issues = this.normalizeIssues(reviewResult.issues, prAnalysis.filesChanged);
       reviewResult.reviewComments = reviewResult.reviewComments || [];
       reviewResult.summary = reviewResult.summary || 'AI analysis complete.';
+      reviewResult.overallScore = typeof reviewResult.overallScore === 'number' ? reviewResult.overallScore : 0;
+      reviewResult.approved = typeof reviewResult.approved === 'boolean' ? reviewResult.approved : false;
       reviewResult.commitSha = commitSha; // Ensure commitSha is part of the final result
       this.logger.info('Successfully parsed AI review response.');
       return reviewResult;
@@ -72,19 +74,54 @@ export class AIReviewer {
 
     const lines = output.split('\n').filter(line => line.trim().length > 0);
     let lastJson = '';
+    let extractedReviewJson = '';
     
     for (const line of lines) {
       const trimmedLine = line.trim();
-      if (trimmedLine.startsWith('{') && trimmedLine.endsWith('}')) {
-        try {
-          const parsed = JSON.parse(trimmedLine) as { type?: string };
-          if (parsed.type !== 'step_start' && parsed.type !== 'step_finish') {
-            lastJson = trimmedLine;
-          }
-        } catch {
-          continue;
-        }
+      if (!trimmedLine.startsWith('{') || !trimmedLine.endsWith('}')) {
+        continue;
       }
+
+      try {
+        const parsed = JSON.parse(trimmedLine) as Record<string, unknown>;
+
+        if (
+          typeof parsed['summary'] === 'string' ||
+          Array.isArray(parsed['issues']) ||
+          typeof parsed['overallScore'] === 'number'
+        ) {
+          extractedReviewJson = trimmedLine;
+        }
+
+        if (parsed['type'] === 'text') {
+          const part = parsed['part'] as Record<string, unknown> | undefined;
+          const partText = part && typeof part['text'] === 'string' ? part['text'] : '';
+          if (partText) {
+            try {
+              const maybeReview = JSON.parse(partText) as Record<string, unknown>;
+              if (
+                typeof maybeReview['summary'] === 'string' ||
+                Array.isArray(maybeReview['issues']) ||
+                typeof maybeReview['overallScore'] === 'number'
+              ) {
+                extractedReviewJson = JSON.stringify(maybeReview);
+              }
+            } catch {
+              // Ignore non-JSON text payloads.
+            }
+          }
+        }
+
+        if (parsed['type'] !== 'step_start' && parsed['type'] !== 'step_finish') {
+          lastJson = trimmedLine;
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    if (extractedReviewJson) {
+      return extractedReviewJson;
     }
 
     if (!lastJson) {
@@ -99,7 +136,14 @@ export class AIReviewer {
     }
 
     try {
-      JSON.parse(lastJson);
+      const parsed = JSON.parse(lastJson) as Record<string, unknown>;
+      if (
+        typeof parsed['summary'] !== 'string' &&
+        !Array.isArray(parsed['issues']) &&
+        typeof parsed['overallScore'] !== 'number'
+      ) {
+        throw new Error('Parsed JSON is not a review payload');
+      }
     } catch {
       throw new Error(`Invalid JSON in OpenCode output: ${lastJson.substring(0, 200)}`);
     }
