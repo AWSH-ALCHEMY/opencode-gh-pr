@@ -258,6 +258,47 @@ jobs:
           PROMPT
           timeout 900 opencode run - --format json < /tmp/code_apply_prompt.txt
 
+      - name: "Filter restricted workflow edits"
+        id: restricted
+        if: steps.opencode.outcome == 'success'
+        run: |
+          mapfile -t restricted_files < <(git diff --name-only -- '.github/workflows/*.yml' '.github/workflows/*.yaml')
+          if [ "${#restricted_files[@]}" -eq 0 ]; then
+            echo "has_restricted=false" >> "$GITHUB_OUTPUT"
+            echo "restricted_files_json=[]" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          printf '%s\n' "${restricted_files[@]}" > /tmp/restricted_workflow_files.txt
+          while IFS= read -r file; do
+            git checkout -- "$file"
+          done < /tmp/restricted_workflow_files.txt
+
+          restricted_json="$(python3 - <<'PY'
+          import json
+          with open('/tmp/restricted_workflow_files.txt', 'r', encoding='utf-8') as fh:
+              files=[line.strip() for line in fh if line.strip()]
+          print(json.dumps(files))
+          PY
+          )"
+
+          echo "has_restricted=true" >> "$GITHUB_OUTPUT"
+          {
+            echo "restricted_files_json<<EOF"
+            echo "$restricted_json"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### /code_apply: Restricted Edits Skipped"
+            echo ""
+            echo "The following workflow files were edited by OpenCode and were reverted to avoid push rejection:"
+            echo ""
+            while IFS= read -r file; do
+              echo "- \`$file\`"
+            done < /tmp/restricted_workflow_files.txt
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: "Commit and push if changed"
         id: commit
         if: steps.opencode.outcome == 'success'
@@ -281,6 +322,9 @@ jobs:
             const opencodeOutcome = '${{ steps.opencode.outcome }}';
             const changed = '${{ steps.commit.outputs.changed }}' === 'true';
             const count = '${{ steps.collect.outputs.count }}';
+            const hasRestricted = '${{ steps.restricted.outputs.has_restricted }}' === 'true';
+            const restrictedFilesRaw = JSON.parse('${{ toJSON(steps.restricted.outputs.restricted_files_json) }}');
+            const restrictedFiles = restrictedFilesRaw ? JSON.parse(restrictedFilesRaw) : [];
             const prNumber = Number('${{ needs.resolve-command.outputs.pr_number }}');
             let body = '';
             if (opencodeOutcome !== 'success') {
@@ -289,6 +333,9 @@ jobs:
               body = `✅ Applied fixes for ${count} comment(s) via \`/code_apply\` and pushed an update to this PR branch.`;
             } else {
               body = `ℹ️ \`/code_apply\` ran for ${count} comment(s), but no file changes were produced.`;
+            }
+            if (hasRestricted && restrictedFiles.length > 0) {
+              body += `\n\n⚠️ Workflow file edits were detected and intentionally skipped to avoid GitHub permission rejection:\n${restrictedFiles.map(f => `- \`${f}\``).join('\n')}`;
             }
             await github.rest.issues.createComment({
               owner: context.repo.owner,
