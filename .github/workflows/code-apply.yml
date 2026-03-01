@@ -20,6 +20,7 @@ jobs:
       should_apply: ${{ steps.resolve.outputs.should_apply }}
       pr_number: ${{ steps.resolve.outputs.pr_number }}
       head_ref: ${{ steps.resolve.outputs.head_ref }}
+      head_sha: ${{ steps.resolve.outputs.head_sha }}
       is_fork: ${{ steps.resolve.outputs.is_fork }}
       target_ids_json: ${{ steps.resolve.outputs.target_ids_json }}
       feedback: ${{ steps.resolve.outputs.feedback }}
@@ -27,6 +28,7 @@ jobs:
       policy_source: ${{ steps.resolve.outputs.policy_source }}
       requested_by: ${{ steps.resolve.outputs.requested_by }}
       force_ack: ${{ steps.resolve.outputs.force_ack }}
+      command_text: ${{ steps.resolve.outputs.command_text }}
     steps:
       - name: "Parse command and validate context"
         id: resolve
@@ -45,6 +47,7 @@ jobs:
             setOutput('should_apply', 'false');
             setOutput('pr_number', '');
             setOutput('head_ref', '');
+            setOutput('head_sha', '');
             setOutput('is_fork', '');
             setOutput('target_ids_json', '[]');
             setOutput('feedback', '');
@@ -52,6 +55,7 @@ jobs:
             setOutput('policy_source', '');
             setOutput('requested_by', comment?.user?.login || '');
             setOutput('force_ack', 'false');
+            setOutput('command_text', firstLine);
 
             if (!match) {
               return;
@@ -172,6 +176,7 @@ jobs:
             const isFork = pr.data.head.repo.full_name !== `${context.repo.owner}/${context.repo.repo}`;
             setOutput('pr_number', String(prNumber));
             setOutput('head_ref', pr.data.head.ref);
+            setOutput('head_sha', pr.data.head.sha);
             setOutput('is_fork', isFork ? 'true' : 'false');
 
             if (isFork) {
@@ -313,18 +318,49 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: "Post feedback comment"
+        id: post_feedback
         uses: actions/github-script@v7
         with:
           script: |
             const prNumber = Number('${{ needs.resolve-command.outputs.pr_number }}');
             const body = JSON.parse('${{ toJSON(needs.resolve-command.outputs.feedback) }}');
             if (!prNumber || !body) return;
-            await github.rest.issues.createComment({
+            const created = await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: prNumber,
-              body: `⚙️ \`${body}\``,
+              body: `⚙️ \`${body}\`\n\n<!-- code_apply:managed feedback -->`,
             });
+            core.setOutput('comment_id', String(created.data.id));
+
+      - name: "Cleanup prior managed feedback comments"
+        uses: actions/github-script@v7
+        env:
+          CURRENT_COMMENT_ID: ${{ steps.post_feedback.outputs.comment_id }}
+        with:
+          script: |
+            const prNumber = Number('${{ needs.resolve-command.outputs.pr_number }}');
+            if (!prNumber) return;
+            const currentCommentId = Number(process.env.CURRENT_COMMENT_ID || '0');
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              per_page: 100,
+            });
+            const stale = comments.filter((c) =>
+              c.user?.login === 'github-actions[bot]' &&
+              c.id !== currentCommentId &&
+              typeof c.body === 'string' &&
+              c.body.includes('<!-- code_apply:managed feedback -->')
+            );
+            for (const c of stale) {
+              await github.rest.issues.deleteComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: c.id,
+              });
+            }
 
   apply:
     name: "Apply Requested Changes"
@@ -337,11 +373,18 @@ jobs:
       pull-requests: write
       issues: write
     steps:
-      - name: "Checkout PR branch"
+      - name: "Checkout source PR head"
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.resolve-command.outputs.head_ref }}
+          ref: ${{ needs.resolve-command.outputs.head_sha }}
           fetch-depth: 0
+
+      - name: "Create apply branch"
+        id: branch
+        run: |
+          branch_name="codeapply/pr-${{ needs.resolve-command.outputs.pr_number }}/run-${GITHUB_RUN_ID}"
+          git checkout -b "$branch_name"
+          echo "name=$branch_name" >> "$GITHUB_OUTPUT"
 
       - name: "Setup Node.js"
         uses: actions/setup-node@v4
@@ -373,6 +416,7 @@ jobs:
               });
               comments.push({
                 id: res.data.id,
+                node_id: res.data.node_id,
                 path: res.data.path,
                 line: res.data.line,
                 body: res.data.body,
@@ -449,16 +493,107 @@ jobs:
         run: |
           if git diff --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "commit_sha=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "chore: apply /code_apply requested review fixes"
-          git push origin "${{ needs.resolve-command.outputs.head_ref }}"
+          git commit -m "chore(code_apply): apply requested review fixes (src-pr:#${{ needs.resolve-command.outputs.pr_number }} run:${{ github.run_id }})"
+          commit_sha="$(git rev-parse HEAD)"
+          git push origin "${{ steps.branch.outputs.name }}"
           echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "commit_sha=$commit_sha" >> "$GITHUB_OUTPUT"
+
+      - name: "Create child PR"
+        id: child_pr
+        if: steps.opencode.outcome == 'success' && steps.commit.outputs.changed == 'true'
+        uses: actions/github-script@v7
+        env:
+          TARGET_IDS_JSON: ${{ needs.resolve-command.outputs.target_ids_json }}
+        with:
+          script: |
+            const prNumber = Number('${{ needs.resolve-command.outputs.pr_number }}');
+            const sourceHeadRef = '${{ needs.resolve-command.outputs.head_ref }}';
+            const applyBranch = '${{ steps.branch.outputs.name }}';
+            const count = '${{ steps.collect.outputs.count }}';
+            const commandText = '${{ needs.resolve-command.outputs.command_text }}';
+            const requestedBy = '${{ needs.resolve-command.outputs.requested_by }}';
+            const targetIds = JSON.parse(process.env.TARGET_IDS_JSON || '[]');
+            const title = `code_apply: suggested fixes for PR #${prNumber} (${count} comment(s))`;
+            const marker = `<!-- code_apply:source_pr=${prNumber} -->`;
+            const body = [
+              marker,
+              '',
+              `Source PR: #${prNumber}`,
+              `Requested by: @${requestedBy}`,
+              `Command: \`${commandText}\``,
+              `Target comment IDs: ${targetIds.join(', ') || 'none'}`,
+              `Workflow run: ${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
+              '',
+              'This PR contains AI-applied changes on an isolated branch.',
+            ].join('\n');
+
+            const created = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              head: applyBranch,
+              base: sourceHeadRef,
+              body,
+            });
+            core.setOutput('number', String(created.data.number));
+            core.setOutput('url', created.data.html_url);
+
+      - name: "Resolve targeted AI review threads"
+        if: steps.opencode.outcome == 'success' && steps.commit.outputs.changed == 'true'
+        uses: actions/github-script@v7
+        env:
+          TARGET_IDS_JSON: ${{ needs.resolve-command.outputs.target_ids_json }}
+        with:
+          script: |
+            const ids = JSON.parse(process.env.TARGET_IDS_JSON || '[]');
+            for (const id of ids) {
+              try {
+                const comment = await github.rest.pulls.getReviewComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: Number(id),
+                });
+                const nodeId = comment.data.node_id;
+                if (!nodeId) continue;
+                const nodeResult = await github.graphql(
+                  `query($id: ID!) {
+                    node(id: $id) {
+                      ... on PullRequestReviewComment {
+                        pullRequestReviewThread {
+                          id
+                          isResolved
+                        }
+                      }
+                    }
+                  }`,
+                  { id: nodeId }
+                );
+                const threadId = nodeResult?.node?.pullRequestReviewThread?.id;
+                const isResolved = nodeResult?.node?.pullRequestReviewThread?.isResolved;
+                if (threadId && !isResolved) {
+                  await github.graphql(
+                    `mutation($threadId: ID!) {
+                      resolveReviewThread(input: {threadId: $threadId}) {
+                        thread { id isResolved }
+                      }
+                    }`,
+                    { threadId }
+                  );
+                }
+              } catch (error) {
+                core.warning(`Failed to resolve thread for review comment ${id}: ${error instanceof Error ? error.message : String(error)}`);
+              }
+            }
 
       - name: "Post result comment"
+        id: post_result
         if: always()
         uses: actions/github-script@v7
         with:
@@ -469,6 +604,10 @@ jobs:
             const policyProfile = '${{ needs.resolve-command.outputs.policy_profile }}' || 'unknown';
             const requestedBy = '${{ needs.resolve-command.outputs.requested_by }}' || 'unknown';
             const forceAck = '${{ needs.resolve-command.outputs.force_ack }}' === 'true';
+            const childPrUrl = '${{ steps.child_pr.outputs.url }}' || '';
+            const childPrNumber = '${{ steps.child_pr.outputs.number }}' || '';
+            const applyBranch = '${{ steps.branch.outputs.name }}' || '';
+            const commitSha = '${{ steps.commit.outputs.commit_sha }}' || '';
             const hasRestricted = String('${{ steps.restricted.outputs.has_restricted }}').trim().toLowerCase() === 'true';
             const restrictedFilesOutput = ${{ toJSON(steps.restricted.outputs.restricted_files_json) }};
             let restrictedFiles = [];
@@ -487,7 +626,13 @@ jobs:
             if (opencodeOutcome !== 'success') {
               body = `❌ \`/code_apply\` failed while running OpenCode for ${count} comment(s). Check workflow logs.`;
             } else if (changed) {
-              body = `✅ Applied fixes for ${count} comment(s) via \`/code_apply\` and pushed an update to this PR branch.`;
+              body = `✅ Applied fixes for ${count} comment(s) via \`/code_apply\` on isolated branch \`${applyBranch}\`.`;
+              if (childPrUrl) {
+                body += `\n\nChild PR: ${childPrUrl}${childPrNumber ? ` (#${childPrNumber})` : ''}`;
+              }
+              if (commitSha) {
+                body += `\nCommit: \`${commitSha}\``;
+              }
             } else {
               body = `ℹ️ \`/code_apply\` ran for ${count} comment(s), but no file changes were produced.`;
             }
@@ -498,9 +643,41 @@ jobs:
               body += `\n\n⚠️ Force acknowledged by @${requestedBy} via \`/code_apply --all --force\`.`;
             }
             body += `\n\nPolicy profile: \`${policyProfile}\``;
-            await github.rest.issues.createComment({
+            body += `\n\n<!-- code_apply:managed result -->`;
+            const created = await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: prNumber,
               body,
             });
+            core.setOutput('comment_id', String(created.data.id));
+
+      - name: "Cleanup prior managed result comments"
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          CURRENT_COMMENT_ID: ${{ steps.post_result.outputs.comment_id }}
+        with:
+          script: |
+            const prNumber = Number('${{ needs.resolve-command.outputs.pr_number }}');
+            if (!prNumber) return;
+            const currentCommentId = Number(process.env.CURRENT_COMMENT_ID || '0');
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              per_page: 100,
+            });
+            const stale = comments.filter((c) =>
+              c.user?.login === 'github-actions[bot]' &&
+              c.id !== currentCommentId &&
+              typeof c.body === 'string' &&
+              c.body.includes('<!-- code_apply:managed result -->')
+            );
+            for (const c of stale) {
+              await github.rest.issues.deleteComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: c.id,
+              });
+            }

@@ -12,6 +12,13 @@ Current `/code_apply` behavior commits directly to the source PR branch. Over ti
 
 Change `/code_apply` to use an isolated bot branch and open a separate PR for AI-applied changes, instead of pushing directly to the source PR branch.
 
+## Current Status
+
+- Implemented: isolated apply branch + child PR creation from `/code_apply`
+- Implemented: one-time approval label consumption (`requireLabel`)
+- Implemented: managed feedback/result comment cleanup for older `/code_apply` bot comments
+- Implemented: targeted inline review thread resolution when apply changes are produced
+
 ## Non-Goals
 
 - Replacing the existing secure review workflow
