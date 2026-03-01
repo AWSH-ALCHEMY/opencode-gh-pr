@@ -61,3 +61,5 @@ pids/
 
 # dotenv environment variables file
 .env
+# Local debugging artifacts
+artifacts/
