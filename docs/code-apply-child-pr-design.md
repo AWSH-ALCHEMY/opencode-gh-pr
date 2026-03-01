@@ -90,6 +90,11 @@ Supported profile fields:
 - `requireLabel` (string): label that must exist on source PR to allow `/code_apply`
 - `allowAll` (boolean): whether `/code_apply --all` is allowed
 - `maxCommentsPerRun` (number): hard cap on target comments per command
+- `requireForceForAll` (boolean): require `/code_apply --all --force` instead of plain `--all`
+
+Operational note:
+
+- Required approval labels are consumed as one-time approvals when a command passes label gating.
 
 Security note:
 

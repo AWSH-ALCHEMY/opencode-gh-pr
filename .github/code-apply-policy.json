@@ -6,19 +6,22 @@
       "allowedAuthorAssociations": ["OWNER"],
       "requireLabel": "ai-apply-approved",
       "allowAll": false,
-      "maxCommentsPerRun": 5
+      "maxCommentsPerRun": 5,
+      "requireForceForAll": true
     },
     "balanced": {
       "allowedAuthorAssociations": ["OWNER", "MEMBER", "COLLABORATOR"],
       "requireLabel": "ai-apply-approved",
       "allowAll": true,
-      "maxCommentsPerRun": 30
+      "maxCommentsPerRun": 30,
+      "requireForceForAll": true
     },
     "open": {
       "allowedAuthorAssociations": ["OWNER", "MEMBER", "COLLABORATOR", "CONTRIBUTOR"],
       "requireLabel": "",
       "allowAll": true,
-      "maxCommentsPerRun": 50
+      "maxCommentsPerRun": 50,
+      "requireForceForAll": true
     }
   }
 }

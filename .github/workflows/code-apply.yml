@@ -25,6 +25,8 @@ jobs:
       feedback: ${{ steps.resolve.outputs.feedback }}
       policy_profile: ${{ steps.resolve.outputs.policy_profile }}
       policy_source: ${{ steps.resolve.outputs.policy_source }}
+      requested_by: ${{ steps.resolve.outputs.requested_by }}
+      force_ack: ${{ steps.resolve.outputs.force_ack }}
     steps:
       - name: "Parse command and validate context"
         id: resolve
@@ -48,6 +50,8 @@ jobs:
             setOutput('feedback', '');
             setOutput('policy_profile', '');
             setOutput('policy_source', '');
+            setOutput('requested_by', comment?.user?.login || '');
+            setOutput('force_ack', 'false');
 
             if (!match) {
               return;
@@ -67,6 +71,7 @@ jobs:
                   requireLabel: '',
                   allowAll: true,
                   maxCommentsPerRun: 50,
+                  requireForceForAll: true,
                 },
               },
             };
@@ -90,11 +95,15 @@ jobs:
               const maxCommentsPerRun = Number.isInteger(maxCommentsPerRunRaw) && maxCommentsPerRunRaw > 0
                 ? maxCommentsPerRunRaw
                 : defaultPolicy.profiles.balanced.maxCommentsPerRun;
+              const requireForceForAll = typeof raw?.requireForceForAll === 'boolean'
+                ? raw.requireForceForAll
+                : defaultPolicy.profiles.balanced.requireForceForAll;
               return {
                 allowedAuthorAssociations,
                 requireLabel,
                 allowAll,
                 maxCommentsPerRun,
+                requireForceForAll,
               };
             };
 
@@ -181,9 +190,23 @@ jobs:
                 );
                 return;
               }
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: prNumber,
+                  name: profile.requireLabel,
+                });
+              } catch (error) {
+                core.warning(
+                  `Unable to consume required label \`${profile.requireLabel}\` on PR #${prNumber}: ${error instanceof Error ? error.message : String(error)}`
+                );
+              }
             }
 
             const arg = (match[1] || '').trim();
+            const rawTokens = arg ? arg.split(/\s+/).map((token) => token.trim()).filter((token) => token.length > 0) : [];
+            const tokens = rawTokens.map((token) => token.toLowerCase());
             const aiLogins = new Set(['github-actions[bot]', 'github-actions']);
             const targetIds = [];
 
@@ -204,7 +227,7 @@ jobs:
               return id;
             };
 
-            if (!arg || arg.toLowerCase() === 'this') {
+            if (!arg || (tokens.length === 1 && tokens[0] === 'this')) {
               if (eventName !== 'pull_request_review_comment') {
                 setOutput('feedback', 'Use `/code_apply --all` or `/code_apply <comment_id>` in PR conversation comments.');
                 return;
@@ -218,11 +241,26 @@ jobs:
                 setOutput('feedback', `Could not resolve target comment: ${msg}`);
                 return;
               }
-            } else if (arg === '--all') {
+            } else if (tokens.includes('--all')) {
+              const validAllTokens = new Set(['--all', '--force', '-force', '-f']);
+              const hasInvalidAllToken = tokens.some((token) => !validAllTokens.has(token));
+              if (hasInvalidAllToken) {
+                setOutput('feedback', 'Invalid `/code_apply --all` usage. Use `/code_apply --all --force`.');
+                return;
+              }
+              const hasForce = tokens.includes('--force') || tokens.includes('-force') || tokens.includes('-f');
+              if (profile.requireForceForAll && !hasForce) {
+                setOutput(
+                  'feedback',
+                  `Policy profile \`${profileName}\` requires explicit \`--force\` for \`/code_apply --all\`. Use \`/code_apply --all --force\`.`
+                );
+                return;
+              }
               if (!profile.allowAll) {
                 setOutput('feedback', `\`/code_apply --all\` is disabled by policy profile \`${profileName}\`.`);
                 return;
               }
+              setOutput('force_ack', hasForce ? 'true' : 'false');
               const allReviewComments = await github.paginate(
                 github.rest.pulls.listReviewComments,
                 {
@@ -240,9 +278,9 @@ jobs:
                 return;
               }
               targetIds.push(...filtered);
-            } else if (/^\d+$/.test(arg)) {
+            } else if (tokens.length === 1 && /^\d+$/.test(tokens[0])) {
               try {
-                targetIds.push(await validateCommentId(Number(arg)));
+                targetIds.push(await validateCommentId(Number(tokens[0])));
               } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
                 setOutput('feedback', `Invalid comment id: ${msg}`);
@@ -425,6 +463,8 @@ jobs:
             const changed = '${{ steps.commit.outputs.changed }}' === 'true';
             const count = '${{ steps.collect.outputs.count }}';
             const policyProfile = '${{ needs.resolve-command.outputs.policy_profile }}' || 'unknown';
+            const requestedBy = '${{ needs.resolve-command.outputs.requested_by }}' || 'unknown';
+            const forceAck = '${{ needs.resolve-command.outputs.force_ack }}' === 'true';
             const hasRestricted = String('${{ steps.restricted.outputs.has_restricted }}').trim().toLowerCase() === 'true';
             const restrictedFilesOutput = ${{ toJSON(steps.restricted.outputs.restricted_files_json) }};
             let restrictedFiles = [];
@@ -449,6 +489,9 @@ jobs:
             }
             if (hasRestricted && restrictedFiles.length > 0) {
               body += `\n\n⚠️ Workflow file edits were detected and intentionally skipped to avoid GitHub permission rejection:\n${restrictedFiles.map(f => `- \`${f}\``).join('\n')}`;
+            }
+            if (forceAck) {
+              body += `\n\n⚠️ Force acknowledged by @${requestedBy} via \`/code_apply --all --force\`.`;
             }
             body += `\n\nPolicy profile: \`${policyProfile}\``;
             await github.rest.issues.createComment({
