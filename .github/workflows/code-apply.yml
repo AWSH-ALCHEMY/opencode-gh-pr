@@ -209,6 +209,7 @@ jobs:
             const tokens = rawTokens.map((token) => token.toLowerCase());
             const aiLogins = new Set(['github-actions[bot]', 'github-actions']);
             const targetIds = [];
+            let usedForceAll = false;
 
             const validateCommentId = async (id) => {
               const c = await github.rest.pulls.getReviewComment({
@@ -260,6 +261,7 @@ jobs:
                 setOutput('feedback', `\`/code_apply --all\` is disabled by policy profile \`${profileName}\`.`);
                 return;
               }
+              usedForceAll = hasForce;
               setOutput('force_ack', hasForce ? 'true' : 'false');
               const allReviewComments = await github.paginate(
                 github.rest.pulls.listReviewComments,
@@ -292,9 +294,11 @@ jobs:
             }
 
             if (targetIds.length > profile.maxCommentsPerRun) {
+              const baseMsg = `Requested ${targetIds.length} comments exceeds policy max (${profile.maxCommentsPerRun}) for profile \`${profileName}\`.`;
+              const forceNote = usedForceAll ? ` Force acknowledged by @${comment?.user?.login || 'unknown'} via \`/code_apply --all --force\`.` : '';
               setOutput(
                 'feedback',
-                `Requested ${targetIds.length} comments exceeds policy max (${profile.maxCommentsPerRun}) for profile \`${profileName}\`.`
+                `${baseMsg}${forceNote}`
               );
               return;
             }
