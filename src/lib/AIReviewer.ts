@@ -55,18 +55,13 @@ export class AIReviewer {
           errorOutput += data.toString();
         },
       },
-      ignoreReturnCode: true, // We handle errors manually by checking the output
       input: Buffer.from(fullPrompt, 'utf8'),
     };
 
     const args = ['run', '-', '--format', 'json'];
     this.logger.info(`Running OpenCode CLI, piping prompt to stdin`);
 
-    const exitCode = await exec('opencode', args, options);
-
-    if (exitCode !== 0) {
-      throw new Error(`OpenCode CLI failed with exit code ${exitCode}. Stderr: ${errorOutput}`);
-    }
+    await exec('opencode', args, options);
 
     if (errorOutput) {
       this.logger.warn(`OpenCode CLI stderr: ${errorOutput}`);
@@ -293,7 +288,7 @@ ${diff}
     const cleanedBase = path.basename(cleaned);
     const baseMatches = changedFiles.filter(f => path.basename(f) === cleanedBase);
     if (baseMatches.length === 1) {
-      return baseMatches[0] || 'N/A';
+      return baseMatches[0] ?? 'N/A';
     }
 
     const containsMatch = changedFiles.find(f => f.endsWith(cleaned) || cleaned.endsWith(f));

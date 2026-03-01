@@ -54,6 +54,7 @@ export type ActionConfigType = z.infer<typeof ConfigSchema>;
  */
 export class ActionConfig {
   private config: ActionConfigType;
+  private initialized = false;
   
   constructor() {
     this.config = {
@@ -80,7 +81,13 @@ export class ActionConfig {
       postComments: true,
       applyLabels: true,
     };
-    this.load();
+  }
+
+  private ensureInitialized(): void {
+    if (!this.initialized) {
+      this.load();
+      this.initialized = true;
+    }
   }
   
   /**
@@ -222,13 +229,12 @@ export class ActionConfig {
    * Get configuration value
    */
   get<K extends keyof ActionConfigType>(key: K): ActionConfigType[K] {
+    this.ensureInitialized();
     return this.config[key];
   }
   
-  /**
-   * Get all configuration
-   */
   getAll(): ActionConfigType {
+    this.ensureInitialized();
     return { ...this.config };
   }
 }

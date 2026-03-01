@@ -30,19 +30,17 @@ export class SecurePRReview {
   private commentPoster: CommentPoster;
   
   constructor(options: SecurePRReviewOptions) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    this.octokit = options.octokit as unknown as Octokit;
+    this.octokit = options.octokit;
     this.config = options.config;
     this.logger = options.logger;
     this.repo = options.repo;
-    if (!github.context.payload.pull_request) {
+    const pullRequest = github.context.payload.pull_request as { number: number; head: { sha: string }; base: { sha: string } } | undefined;
+    if (!pullRequest) {
       throw new Error('This action can only be run on Pull Requests.');
     }
-    this.prNumber = github.context.payload.pull_request.number;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment,@typescript-eslint/no-unsafe-member-access
-    this.commitSha = github.context.payload.pull_request['head'].sha;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment,@typescript-eslint/no-unsafe-member-access
-    this.baseSha = github.context.payload.pull_request['base'].sha;
+    this.prNumber = pullRequest.number;
+    this.commitSha = pullRequest.head.sha;
+    this.baseSha = pullRequest.base.sha;
     
     this.prAnalyzer = new PRAnalyzer({
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment

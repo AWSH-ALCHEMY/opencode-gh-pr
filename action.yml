@@ -6,7 +6,7 @@ inputs:
   # Core Configuration
   github-token:
     description: 'GitHub token for API access'
-    required: false
+    required: true
   
   ai-model:
     description: 'AI model to use for review'
@@ -77,3 +77,17 @@ runs:
   main: 'dist/index.js'
   pre: 'dist/setup/index.js'
   post: 'dist/cleanup/index.js'
+
+outputs:
+  review-status:
+    description: 'Status of the review (approved, changes_requested, commented)'
+  review-score:
+    description: 'Overall review score (1-10)'
+  security-issues:
+    description: 'Number of security issues found'
+  performance-issues:
+    description: 'Number of performance issues found'
+  files-analyzed:
+    description: 'Number of files analyzed'
+  execution-time:
+    description: 'Time taken to execute the review in seconds'

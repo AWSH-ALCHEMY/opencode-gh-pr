@@ -5,6 +5,9 @@ import { AIReviewResult, ReviewResult } from './types';
 import { SecurityScanResult } from './SecurityScanner';
 import * as path from 'path';
 
+const MAX_INLINE_COMMENTS = 30;
+const MAX_ANNOTATIONS = 50;
+
 export class CommentPoster {
   private readonly octokit: Octokit;
   private readonly config: ActionConfig;
@@ -13,8 +16,7 @@ export class CommentPoster {
   private readonly prNumber: number;
   
   constructor(options: { octokit: Octokit; config: ActionConfig; logger: Logger; repo: { owner: string; repo: string }; prNumber: number; }) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    this.octokit = options.octokit as unknown as Octokit;
+    this.octokit = options.octokit;
     this.config = options.config;
     this.logger = options.logger;
     this.repo = options.repo;
@@ -95,8 +97,8 @@ export class CommentPoster {
       return login === 'github-actions[bot]' || login === 'github-actions';
     };
     const sortByRecency = (a: { updated_at: string; created_at: string }, b: { updated_at: string; created_at: string }): number => {
-      const aTime = new Date(a.updated_at || a.created_at).getTime();
-      const bTime = new Date(b.updated_at || b.created_at).getTime();
+      const aTime = new Date(a.updated_at ?? a.created_at).getTime();
+      const bTime = new Date(b.updated_at ?? b.created_at).getTime();
       return bTime - aTime;
     };
 
@@ -104,7 +106,7 @@ export class CommentPoster {
       .filter(comment => isActionsBot(comment.user?.login))
       .sort(sortByRecency)[0];
 
-    const existingComment = botMarkerComment || markerComments.sort(sortByRecency)[0];
+    const existingComment = botMarkerComment ?? markerComments.sort(sortByRecency)[0];
 
     if (existingComment) {
       await this.octokit.issues.updateComment({
@@ -189,11 +191,11 @@ export class CommentPoster {
     const baseName = path.basename(normalized);
     const byBaseName = changedFiles.filter(f => path.basename(f) === baseName);
     if (byBaseName.length === 1) {
-      return byBaseName[0] || null;
+      return byBaseName[0] ?? null;
     }
 
     const byContains = changedFiles.find(f => f.endsWith(normalized) || normalized.endsWith(f));
-    return byContains || null;
+    return byContains ?? null;
   }
 
   private findNearestLine(target: number, candidates: number[]): number {
@@ -261,7 +263,7 @@ export class CommentPoster {
       .filter((comment, index, all) =>
         all.findIndex(c => c.path === comment.path && c.line === comment.line && c.body === comment.body) === index
       )
-      .slice(0, 30);
+      .slice(0, MAX_INLINE_COMMENTS);
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const pullsApi = this.octokit.pulls as unknown as {
@@ -355,7 +357,7 @@ export class CommentPoster {
         title: `AI Review: ${review.approved ? 'Approved' : 'Changes Requested'}`,
         summary: review.summary,
         text: `**${(review.issues || []).length} issues found.**\n\n${issuesText}\n\n**General Comments:**\n${(review.reviewComments || []).join('\n')}`,
-        annotations: annotations.slice(0, 50), // GitHub API has a limit of 50 annotations per request
+        annotations: annotations.slice(0, MAX_ANNOTATIONS),
       },
     });
   }
