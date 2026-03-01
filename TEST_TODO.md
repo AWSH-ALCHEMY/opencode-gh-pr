@@ -5,5 +5,5 @@
   - [x] `<!-- ai-review-comment -->`
   - [x] `<!-- security-notice-comment -->`
   - [x] `<!-- summary-comment -->`
-- [ ] Pass 2: Add inline PR review comments in "Files changed" (step 3).
-- [ ] Trigger workflow again and verify inline review comments appear on changed files.
+- [x] Pass 2: Add inline PR review comments in "Files changed" (step 3).
+- [x] Trigger workflow again and verify inline review comments appear on changed files.
