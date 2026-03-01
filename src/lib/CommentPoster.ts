@@ -87,7 +87,22 @@ export class CommentPoster {
       issue_number: this.prNumber,
     });
 
-    const existingComment = allComments.find(comment => comment.body?.includes(marker));
+    const markerComments = allComments.filter(comment => comment.body?.includes(marker));
+    const isActionsBot = (login?: string): boolean => {
+      if (!login) return false;
+      return login === 'github-actions[bot]' || login === 'github-actions';
+    };
+    const sortByRecency = (a: { updated_at: string; created_at: string }, b: { updated_at: string; created_at: string }): number => {
+      const aTime = new Date(a.updated_at || a.created_at).getTime();
+      const bTime = new Date(b.updated_at || b.created_at).getTime();
+      return bTime - aTime;
+    };
+
+    const botMarkerComment = markerComments
+      .filter(comment => isActionsBot(comment.user?.login))
+      .sort(sortByRecency)[0];
+
+    const existingComment = botMarkerComment || markerComments.sort(sortByRecency)[0];
 
     if (existingComment) {
       await this.octokit.issues.updateComment({
@@ -96,20 +111,21 @@ export class CommentPoster {
         comment_id: existingComment.id,
         body: taggedBody,
       });
+      this.logger.info(`Comment updated: ${existingComment.html_url}`);
     } else {
       try {
-      const result = await this.octokit.issues.createComment({
-        owner: this.repo.owner,
-        repo: this.repo.repo,
-        issue_number: this.prNumber,
-        body: taggedBody,
-      });
-      this.logger.info(`Comment created: ${result.data.html_url}`);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Failed to create comment: ${errorMessage}`);
-      throw error;
-    }
+        const result = await this.octokit.issues.createComment({
+          owner: this.repo.owner,
+          repo: this.repo.repo,
+          issue_number: this.prNumber,
+          body: taggedBody,
+        });
+        this.logger.info(`Comment created: ${result.data.html_url}`);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Failed to create comment: ${errorMessage}`);
+        throw error;
+      }
     }
   }
   
