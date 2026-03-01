@@ -1,0 +1,286 @@
+name: "Code Apply Command"
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  resolve-command:
+    name: "Resolve /code_apply"
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.resolve.outputs.should_run }}
+      should_apply: ${{ steps.resolve.outputs.should_apply }}
+      pr_number: ${{ steps.resolve.outputs.pr_number }}
+      head_ref: ${{ steps.resolve.outputs.head_ref }}
+      is_fork: ${{ steps.resolve.outputs.is_fork }}
+      target_ids_json: ${{ steps.resolve.outputs.target_ids_json }}
+      feedback: ${{ steps.resolve.outputs.feedback }}
+    steps:
+      - name: "Parse command and validate context"
+        id: resolve
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const eventName = context.eventName;
+            const payload = context.payload;
+            const comment = payload.comment;
+            const body = (comment?.body || '').trim();
+            const firstLine = body.split(/\r?\n/)[0] || '';
+            const match = firstLine.match(/^\/code_apply(?:\s+(.+))?$/i);
+
+            const setOutput = (key, value) => core.setOutput(key, value);
+            setOutput('should_run', match ? 'true' : 'false');
+            setOutput('should_apply', 'false');
+            setOutput('pr_number', '');
+            setOutput('head_ref', '');
+            setOutput('is_fork', '');
+            setOutput('target_ids_json', '[]');
+            setOutput('feedback', '');
+
+            if (!match) {
+              return;
+            }
+
+            const disallowed = ['NONE', 'FIRST_TIME_CONTRIBUTOR', 'FIRST_TIMER'];
+            const assoc = comment?.author_association || 'NONE';
+            if (disallowed.includes(assoc)) {
+              setOutput('feedback', 'Only repository collaborators can use `/code_apply`.');
+              return;
+            }
+
+            if (comment?.user?.type === 'Bot') {
+              setOutput('feedback', 'Ignoring bot command comment.');
+              return;
+            }
+
+            let prNumber = null;
+            if (eventName === 'issue_comment') {
+              if (!payload.issue?.pull_request) {
+                setOutput('feedback', '`/code_apply` only works on pull requests.');
+                return;
+              }
+              prNumber = payload.issue.number;
+            } else if (eventName === 'pull_request_review_comment') {
+              prNumber = payload.pull_request?.number || null;
+            }
+
+            if (!prNumber) {
+              setOutput('feedback', 'Unable to determine pull request number.');
+              return;
+            }
+
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+
+            const isFork = pr.data.head.repo.full_name !== `${context.repo.owner}/${context.repo.repo}`;
+            setOutput('pr_number', String(prNumber));
+            setOutput('head_ref', pr.data.head.ref);
+            setOutput('is_fork', isFork ? 'true' : 'false');
+
+            if (isFork) {
+              setOutput('feedback', 'Cannot apply changes automatically for forked PRs with default token permissions.');
+              return;
+            }
+
+            const arg = (match[1] || '').trim();
+            const aiLogins = new Set(['github-actions[bot]', 'github-actions']);
+            const targetIds = [];
+
+            const validateCommentId = async (id) => {
+              const c = await github.rest.pulls.getReviewComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: id,
+              });
+              const prUrl = c.data.pull_request_url || '';
+              const expectedSuffix = `/pulls/${prNumber}`;
+              if (!prUrl.endsWith(expectedSuffix)) {
+                throw new Error(`Comment ${id} is not on PR #${prNumber}.`);
+              }
+              if (!aiLogins.has(c.data.user?.login || '')) {
+                throw new Error(`Comment ${id} is not an AI review comment.`);
+              }
+              return id;
+            };
+
+            if (!arg || arg.toLowerCase() === 'this') {
+              if (eventName !== 'pull_request_review_comment') {
+                setOutput('feedback', 'Use `/code_apply --all` or `/code_apply <comment_id>` in PR conversation comments.');
+                return;
+              }
+              const parentId = comment.in_reply_to_id || null;
+              const candidateId = parentId || comment.id;
+              try {
+                targetIds.push(await validateCommentId(candidateId));
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                setOutput('feedback', `Could not resolve target comment: ${msg}`);
+                return;
+              }
+            } else if (arg === '--all') {
+              const allReviewComments = await github.paginate(
+                github.rest.pulls.listReviewComments,
+                {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: prNumber,
+                  per_page: 100,
+                }
+              );
+              const filtered = allReviewComments
+                .filter(c => aiLogins.has(c.user?.login || ''))
+                .map(c => c.id);
+              if (filtered.length === 0) {
+                setOutput('feedback', 'No AI inline review comments found to apply.');
+                return;
+              }
+              targetIds.push(...filtered);
+            } else if (/^\d+$/.test(arg)) {
+              try {
+                targetIds.push(await validateCommentId(Number(arg)));
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                setOutput('feedback', `Invalid comment id: ${msg}`);
+                return;
+              }
+            } else {
+              setOutput('feedback', 'Invalid command. Use `/code_apply`, `/code_apply <comment_id>`, or `/code_apply --all`.');
+              return;
+            }
+
+            setOutput('target_ids_json', JSON.stringify(targetIds));
+            setOutput('should_apply', 'true');
+
+  feedback:
+    name: "Command Feedback"
+    if: needs.resolve-command.outputs.should_run == 'true' && needs.resolve-command.outputs.should_apply != 'true'
+    needs: [resolve-command]
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Post feedback comment"
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = Number('${{ needs.resolve-command.outputs.pr_number }}');
+            const body = JSON.parse('${{ toJSON(needs.resolve-command.outputs.feedback) }}');
+            if (!prNumber || !body) return;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: `⚙️ \`${body}\``,
+            });
+
+  apply:
+    name: "Apply Requested Changes"
+    if: needs.resolve-command.outputs.should_apply == 'true'
+    needs: [resolve-command]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - name: "Checkout PR branch"
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-command.outputs.head_ref }}
+          fetch-depth: 0
+
+      - name: "Setup Node.js"
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: "Install OpenCode CLI"
+        run: npm install -g opencode-ai
+
+      - name: "Install repository dependencies"
+        run: npm ci --ignore-scripts
+
+      - name: "Collect target comments"
+        id: collect
+        uses: actions/github-script@v7
+        env:
+          TARGET_IDS_JSON: ${{ needs.resolve-command.outputs.target_ids_json }}
+        with:
+          script: |
+            const fs = require('fs');
+            const ids = JSON.parse(process.env.TARGET_IDS_JSON || '[]');
+            const comments = [];
+            for (const id of ids) {
+              const res = await github.rest.pulls.getReviewComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: id,
+              });
+              comments.push({
+                id: res.data.id,
+                path: res.data.path,
+                line: res.data.line,
+                body: res.data.body,
+              });
+            }
+            const promptPath = 'artifacts/code_apply_targets.json';
+            fs.mkdirSync('artifacts', { recursive: true });
+            fs.writeFileSync(promptPath, JSON.stringify(comments, null, 2));
+            core.setOutput('count', String(comments.length));
+            core.setOutput('path', promptPath);
+
+      - name: "Run OpenCode apply"
+        run: |
+          cat > /tmp/code_apply_prompt.txt <<'PROMPT'
+          You are modifying this checked-out repository in-place.
+          Apply code changes that address the requested PR review comments from artifacts/code_apply_targets.json.
+          Requirements:
+          - Only change files needed to implement the requested fixes.
+          - Preserve existing behavior unless the comment requests behavioral change.
+          - Keep changes minimal and coherent.
+          - After edits, run `npm run build` and fix any build errors caused by your changes.
+          - Do not change git history and do not add generated summaries to source files.
+          Return a concise summary of what you changed.
+          PROMPT
+          opencode run - --format json < /tmp/code_apply_prompt.txt
+
+      - name: "Commit and push if changed"
+        id: commit
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: apply /code_apply requested review fixes"
+          git push origin "${{ needs.resolve-command.outputs.head_ref }}"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: "Post result comment"
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const changed = '${{ steps.commit.outputs.changed }}' === 'true';
+            const count = '${{ steps.collect.outputs.count }}';
+            const prNumber = Number('${{ needs.resolve-command.outputs.pr_number }}');
+            const body = changed
+              ? `✅ Applied fixes for ${count} comment(s) via \`/code_apply\` and pushed an update to this PR branch.`
+              : `ℹ️ \`/code_apply\` ran for ${count} comment(s), but no file changes were produced.`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body,
+            });
