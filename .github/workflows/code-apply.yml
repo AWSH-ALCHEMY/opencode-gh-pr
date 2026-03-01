@@ -322,9 +322,19 @@ jobs:
             const opencodeOutcome = '${{ steps.opencode.outcome }}';
             const changed = '${{ steps.commit.outputs.changed }}' === 'true';
             const count = '${{ steps.collect.outputs.count }}';
-            const hasRestricted = '${{ steps.restricted.outputs.has_restricted }}' === 'true';
-            const restrictedFilesRaw = JSON.parse('${{ toJSON(steps.restricted.outputs.restricted_files_json) }}');
-            const restrictedFiles = restrictedFilesRaw ? JSON.parse(restrictedFilesRaw) : [];
+            const hasRestricted = String('${{ steps.restricted.outputs.has_restricted }}').trim().toLowerCase() === 'true';
+            const restrictedFilesOutput = ${{ toJSON(steps.restricted.outputs.restricted_files_json) }};
+            let restrictedFiles = [];
+            if (typeof restrictedFilesOutput === 'string' && restrictedFilesOutput.trim().length > 0) {
+              try {
+                const parsed = JSON.parse(restrictedFilesOutput);
+                if (Array.isArray(parsed)) {
+                  restrictedFiles = parsed;
+                }
+              } catch (error) {
+                core.warning(`Unable to parse restricted_files_json output: ${error.message}`);
+              }
+            }
             const prNumber = Number('${{ needs.resolve-command.outputs.pr_number }}');
             let body = '';
             if (opencodeOutcome !== 'success') {
