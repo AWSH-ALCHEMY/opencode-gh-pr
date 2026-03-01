@@ -34,9 +34,19 @@ export class SecurePRReview {
     this.config = options.config;
     this.logger = options.logger;
     this.repo = options.repo;
-    const pullRequest = github.context.payload.pull_request as { number: number; head: { sha: string }; base: { sha: string } } | undefined;
-    if (!pullRequest) {
+    const payload = github.context.payload;
+    if (!payload.pull_request || typeof payload.pull_request !== 'object') {
       throw new Error('This action can only be run on Pull Requests.');
+    }
+    const pullRequest = payload.pull_request as { number?: unknown; head?: { sha?: string }; base?: { sha?: string } };
+    if (
+      typeof pullRequest.number !== 'number' ||
+      !pullRequest.head ||
+      typeof pullRequest.head.sha !== 'string' ||
+      !pullRequest.base ||
+      typeof pullRequest.base.sha !== 'string'
+    ) {
+      throw new Error('Invalid pull request payload structure.');
     }
     this.prNumber = pullRequest.number;
     this.commitSha = pullRequest.head.sha;

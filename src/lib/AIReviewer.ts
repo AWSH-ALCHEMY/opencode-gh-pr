@@ -1,5 +1,5 @@
 
-import { exec, ExecOptions } from '@actions/exec';
+import { exec } from '@actions/exec';
 import { Logger } from './Logger';
 import { PRAnalysisResult, AIReviewResult } from './types';
 import * as path from 'path';
@@ -46,7 +46,13 @@ export class AIReviewer {
 
     let output = '';
     let errorOutput = '';
-    const options: ExecOptions = {
+    const options: {
+      listeners: {
+        stdout: (data: Buffer) => void;
+        stderr: (data: Buffer) => void;
+      };
+      input: Buffer;
+    } = {
       listeners: {
         stdout: (data: Buffer) => {
           output += data.toString();

@@ -262,8 +262,11 @@ export class CommentPoster {
       .filter((comment): comment is { path: string; line: number; side: 'RIGHT'; body: string } => comment !== null)
       .filter((comment, index, all) =>
         all.findIndex(c => c.path === comment.path && c.line === comment.line && c.body === comment.body) === index
-      )
-      .slice(0, MAX_INLINE_COMMENTS);
+      );
+
+    const totalInlineComments = (review.issues || []).filter(issue => issue.file && issue.file !== 'N/A' && issue.line > 0).length;
+    const truncatedCount = totalInlineComments - Math.min(inlineComments.length, MAX_INLINE_COMMENTS);
+    const displayComments = inlineComments.slice(0, MAX_INLINE_COMMENTS);
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const pullsApi = this.octokit.pulls as unknown as {
@@ -283,7 +286,7 @@ export class CommentPoster {
       }) => Promise<unknown>;
     };
 
-    if (inlineComments.length === 0) {
+    if (displayComments.length === 0) {
       await pullsApi.createReview({
         owner: this.repo.owner,
         repo: this.repo.repo,
@@ -296,17 +299,18 @@ export class CommentPoster {
       return;
     }
 
+    const truncationWarning = truncatedCount > 0 ? `\n\n> ⚠️ Showing first ${MAX_INLINE_COMMENTS} of ${totalInlineComments} inline comments.` : '';
     await pullsApi.createReview({
       owner: this.repo.owner,
       repo: this.repo.repo,
       pull_number: this.prNumber,
       commit_id: review.commitSha,
       event: 'COMMENT',
-      body: `## 🤖 AI Inline Review\n\nPosted ${inlineComments.length} inline comments for this commit.\n\n${marker}`,
-      comments: inlineComments,
+      body: `## 🤖 AI Inline Review\n\nPosted ${displayComments.length} inline comments for this commit.${truncationWarning}\n\n${marker}`,
+      comments: displayComments,
     });
 
-    this.logger.info(`Inline review comments posted: ${inlineComments.length}`);
+    this.logger.info(`Inline review comments posted: ${displayComments.length}${truncatedCount > 0 ? ` (${truncatedCount} truncated)` : ''}`);
   }
 
   private async createCheckRun(review: AIReviewResult): Promise<void> {
