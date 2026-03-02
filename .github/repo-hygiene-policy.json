@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "criticalForbiddenFiles": [
+    "logs.zip",
+    "run_opencode.py",
+    "system_prompt.txt",
+    "user_prompt.txt"
+  ],
+  "aiReview": {
+    "model": "opencode-reviewer",
+    "failOnDecision": "fail",
+    "severityThreshold": "high",
+    "confidenceThreshold": 0.85
+  }
+}

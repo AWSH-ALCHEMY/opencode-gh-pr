@@ -5,6 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "ncc build src/index.ts -o dist --source-map && ncc build src/setup.ts -o dist/setup --source-map && ncc build src/cleanup.ts -o dist/cleanup --source-map",
+    "build:hygiene": "ncc build src/hygiene.ts -o dist/hygiene --source-map",
     "test": "jest",
     "test:coverage": "jest --coverage",
     "lint": "eslint src/**/*.ts",
