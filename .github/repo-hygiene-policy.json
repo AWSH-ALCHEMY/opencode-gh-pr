@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "forbiddenFiles": [
+    "logs.zip",
+    "run_opencode.py",
+    "system_prompt.txt",
+    "user_prompt.txt"
+  ],
+  "forbiddenGlobs": [
+    "*.zip"
+  ],
+  "docsGlobs": [
+    "README.md",
+    "docs/*.md",
+    "docs/**/*.md",
+    "*.md"
+  ],
+  "bannedTerms": [
+    "dogfood",
+    "dogfooding",
+    "shit",
+    "fucking",
+    "damn"
+  ]
+}
