@@ -1,4 +1,5 @@
 import { Octokit } from '@octokit/rest';
+import * as github from '@actions/github';
 import { ActionConfig } from './ActionConfig';
 import { Logger } from './Logger';
 import { PRAnalyzer } from './PRAnalyzer';
@@ -11,8 +12,6 @@ export interface SecurePRReviewOptions {
   octokit: Octokit;
   config: ActionConfig;
   logger: Logger;
-  aiApiKey: string;
-  prNumber: number;
   repo: { owner: string; repo: string };
 }
 
@@ -20,8 +19,9 @@ export class SecurePRReview {
   private readonly octokit: Octokit;
   private readonly config: ActionConfig;
   private readonly logger: Logger;
-  private readonly aiApiKey: string;
   private readonly prNumber: number;
+  private readonly commitSha: string;
+  private readonly baseSha: string;
   private readonly repo: { owner: string; repo: string };
   
   private prAnalyzer: PRAnalyzer;
@@ -30,13 +30,27 @@ export class SecurePRReview {
   private commentPoster: CommentPoster;
   
   constructor(options: SecurePRReviewOptions) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    this.octokit = options.octokit as unknown as Octokit;
+    this.octokit = options.octokit;
     this.config = options.config;
     this.logger = options.logger;
-    this.aiApiKey = options.aiApiKey;
-    this.prNumber = options.prNumber;
     this.repo = options.repo;
+    const payload = github.context.payload;
+    if (!payload.pull_request || typeof payload.pull_request !== 'object') {
+      throw new Error('This action can only be run on Pull Requests.');
+    }
+    const pullRequest = payload.pull_request as { number?: unknown; head?: { sha?: string }; base?: { sha?: string } };
+    if (
+      typeof pullRequest.number !== 'number' ||
+      !pullRequest.head ||
+      typeof pullRequest.head.sha !== 'string' ||
+      !pullRequest.base ||
+      typeof pullRequest.base.sha !== 'string'
+    ) {
+      throw new Error('Invalid pull request payload structure.');
+    }
+    this.prNumber = pullRequest.number;
+    this.commitSha = pullRequest.head.sha;
+    this.baseSha = pullRequest.base.sha;
     
     this.prAnalyzer = new PRAnalyzer({
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
@@ -48,9 +62,8 @@ export class SecurePRReview {
     });
     
     this.aiReviewer = new AIReviewer({
-      config: this.config,
       logger: this.logger,
-      aiApiKey: this.aiApiKey,
+      baseSha: this.baseSha,
     });
     
     this.securityScanner = new SecurityScanner({
@@ -94,7 +107,7 @@ export class SecurePRReview {
       let aiReview: AIReviewResult | null = null;
       if (prAnalysis.shouldReview) {
         this.logger.info('Step 3/4: Performing AI code review...');
-        aiReview = await this.aiReviewer.review(prAnalysis);
+        aiReview = await this.aiReviewer.review(prAnalysis, this.commitSha);
         
         if (aiReview) {
           await this.commentPoster.postReview(aiReview);

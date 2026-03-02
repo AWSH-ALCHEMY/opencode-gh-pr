@@ -54,9 +54,9 @@ export type ActionConfigType = z.infer<typeof ConfigSchema>;
  */
 export class ActionConfig {
   private config: ActionConfigType;
+  private initialized = false;
   
   constructor() {
-    // Set default configuration
     this.config = {
       maxDiffSize: 1048576, // 1MB
       maxFiles: 100,
@@ -81,6 +81,13 @@ export class ActionConfig {
       postComments: true,
       applyLabels: true,
     };
+  }
+
+  private ensureInitialized(): void {
+    if (!this.initialized) {
+      this.load();
+      this.initialized = true;
+    }
   }
   
   /**
@@ -222,13 +229,12 @@ export class ActionConfig {
    * Get configuration value
    */
   get<K extends keyof ActionConfigType>(key: K): ActionConfigType[K] {
+    this.ensureInitialized();
     return this.config[key];
   }
   
-  /**
-   * Get all configuration
-   */
   getAll(): ActionConfigType {
+    this.ensureInitialized();
     return { ...this.config };
   }
 }

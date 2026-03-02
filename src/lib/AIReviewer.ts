@@ -1,98 +1,159 @@
-import { ActionConfig } from './ActionConfig';
+
+import { exec } from '@actions/exec';
 import { Logger } from './Logger';
 import { PRAnalysisResult, AIReviewResult } from './types';
-import axios, { AxiosError } from 'axios';
-import { z } from 'zod';
-
-const AIReviewRequestSchema = z.object({
-  model: z.string(),
-  messages: z.array(z.object({
-    role: z.enum(['system', 'user', 'assistant']),
-    content: z.string(),
-  })),
-  temperature: z.number().min(0).max(1),
-  max_tokens: z.number().min(100).max(8000),
-});
-
-const AIResponseSchema = z.object({
-  summary: z.string(),
-  issues: z.array(z.object({
-    file: z.string(),
-    line: z.number(),
-    severity: z.enum(['error', 'warning', 'info']),
-    category: z.enum(['bug', 'security', 'performance', 'style', 'best-practice']),
-    message: z.string(),
-    suggestion: z.string(),
-  })),
-  overallScore: z.number(),
-  approved: z.boolean(),
-  reviewComments: z.array(z.string()),
-});
-
-const AIReviewResponseSchema = z.object({
-  choices: z.array(z.object({
-    message: z.object({
-      content: z.string(),
-    }),
-  })),
-});
+import * as path from 'path';
 
 export class AIReviewer {
-  private readonly config: ActionConfig;
   private readonly logger: Logger;
-  private readonly aiApiKey: string;
-  
-  constructor(options: {
-    config: ActionConfig;
-    logger: Logger;
-    aiApiKey: string;
-  }) {
-    this.config = options.config;
+  private readonly baseSha: string | undefined;
+
+  constructor(options: { logger: Logger; baseSha?: string }) {
     this.logger = options.logger;
-    this.aiApiKey = options.aiApiKey;
+    this.baseSha = options.baseSha;
   }
-  
-  async review(prAnalysis: PRAnalysisResult): Promise<AIReviewResult | null> {
+
+  public async review(prAnalysis: PRAnalysisResult, commitSha: string): Promise<AIReviewResult | null> {
     this.logger.startGroup('🧠 AI Code Review');
-    
     try {
-      if (!prAnalysis.shouldReview) {
-        this.logger.info('Skipping AI review based on PR analysis');
-        return null;
+      const rawResponse = await this.callAIAPI(prAnalysis);
+
+      if (!rawResponse) {
+        this.logger.warn('AI review returned an empty response.');
+        return this.createFallbackReview('AI review returned an empty response.', commitSha);
       }
-      
-      const prompt = this.buildReviewPrompt(prAnalysis);
-      const response = await this.callAIAPI(prompt);
-      const reviewResult = this.parseReviewResponse(response);
-      
-      this.logger.info('AI review completed', {
-        score: reviewResult.overallScore,
-        approved: reviewResult.approved,
-        issues: reviewResult.issues.length,
-      });
-      
+
+      const reviewResult = JSON.parse(rawResponse) as AIReviewResult;
+      reviewResult.issues = this.normalizeIssues(reviewResult.issues, prAnalysis.filesChanged);
+      reviewResult.reviewComments = reviewResult.reviewComments || [];
+      reviewResult.summary = reviewResult.summary || 'AI analysis complete.';
+      reviewResult.overallScore = typeof reviewResult.overallScore === 'number' ? reviewResult.overallScore : 0;
+      reviewResult.approved = typeof reviewResult.approved === 'boolean' ? reviewResult.approved : false;
+      reviewResult.commitSha = commitSha; // Ensure commitSha is part of the final result
+      this.logger.info('Successfully parsed AI review response.');
       return reviewResult;
-      
     } catch (error) {
-      this.logger.error('AI review failed', error as Error);
-      return this.createFallbackReview();
-      
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`AI review failed: ${errorMessage}`);
+      return this.createFallbackReview(errorMessage, commitSha);
     } finally {
       this.logger.endGroup();
     }
   }
-  
-  private buildReviewPrompt(prAnalysis: PRAnalysisResult): z.infer<typeof AIReviewRequestSchema> {
-    const model = this.config.get('aiModel');
-    const temperature = this.config.get('temperature');
-    const maxTokens = this.config.get('maxTokens');
+
+  private async callAIAPI(prAnalysis: PRAnalysisResult): Promise<string> {
+    const fullPrompt = await this.buildReviewContent(prAnalysis);
+
+    let output = '';
+    let errorOutput = '';
+    const options: {
+      listeners: {
+        stdout: (data: Buffer) => void;
+        stderr: (data: Buffer) => void;
+      };
+      input: Buffer;
+    } = {
+      listeners: {
+        stdout: (data: Buffer) => {
+          output += data.toString();
+        },
+        stderr: (data: Buffer) => {
+          errorOutput += data.toString();
+        },
+      },
+      input: Buffer.from(fullPrompt, 'utf8'),
+    };
+
+    const args = ['run', '-', '--format', 'json'];
+    this.logger.info(`Running OpenCode CLI, piping prompt to stdin`);
+
+    await exec('opencode', args, options);
+
+    if (errorOutput) {
+      this.logger.warn(`OpenCode CLI stderr: ${errorOutput}`);
+    }
+
+    const lines = output.split('\n').filter(line => line.trim().length > 0);
+    let lastJson = '';
+    let extractedReviewJson = '';
     
-    const prompt = {
-      model,
-      messages: [
-        {
-          role: 'system',
-          content: `You are an expert code reviewer. Analyze the provided code changes and respond with a JSON object containing:
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      if (!trimmedLine.startsWith('{') || !trimmedLine.endsWith('}')) {
+        continue;
+      }
+
+      try {
+        const parsed = JSON.parse(trimmedLine) as Record<string, unknown>;
+
+        if (
+          typeof parsed['summary'] === 'string' ||
+          Array.isArray(parsed['issues']) ||
+          typeof parsed['overallScore'] === 'number'
+        ) {
+          extractedReviewJson = trimmedLine;
+        }
+
+        if (parsed['type'] === 'text') {
+          const part = parsed['part'] as Record<string, unknown> | undefined;
+          const partText = part && typeof part['text'] === 'string' ? part['text'] : '';
+          if (partText) {
+            try {
+              const maybeReview = JSON.parse(partText) as Record<string, unknown>;
+              if (
+                typeof maybeReview['summary'] === 'string' ||
+                Array.isArray(maybeReview['issues']) ||
+                typeof maybeReview['overallScore'] === 'number'
+              ) {
+                extractedReviewJson = JSON.stringify(maybeReview);
+              }
+            } catch {
+              // Ignore non-JSON text payloads.
+            }
+          }
+        }
+
+        if (parsed['type'] !== 'step_start' && parsed['type'] !== 'step_finish') {
+          lastJson = trimmedLine;
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    if (extractedReviewJson) {
+      return extractedReviewJson;
+    }
+
+    if (!lastJson) {
+      const jsonMatch = output.match(/\{[\s\S]*?\}/g);
+      if (jsonMatch && jsonMatch.length > 0) {
+        lastJson = jsonMatch[jsonMatch.length - 1] ?? '';
+      }
+    }
+
+    if (!lastJson) {
+      throw new Error('No JSON found in OpenCode output');
+    }
+
+    try {
+      const parsed = JSON.parse(lastJson) as Record<string, unknown>;
+      if (
+        typeof parsed['summary'] !== 'string' &&
+        !Array.isArray(parsed['issues']) &&
+        typeof parsed['overallScore'] !== 'number'
+      ) {
+        throw new Error('Parsed JSON is not a review payload');
+      }
+    } catch {
+      throw new Error(`Invalid JSON in OpenCode output: ${lastJson.substring(0, 200)}`);
+    }
+
+    return lastJson;
+  }
+
+  private async buildReviewContent(prAnalysis: PRAnalysisResult): Promise<string> {
+    const systemMessage = `You are an expert code reviewer. Analyze the provided code changes and respond with a JSON object containing:
           {
             "summary": "Brief overview of changes",
             "issues": [
@@ -109,103 +170,138 @@ export class AIReviewer {
             "approved": true|false,
             "reviewComments": ["general comments"]
           }
-          Focus on security, performance, and maintainability. Be constructive and specific.`,
+          Focus on security, performance, and maintainability. Be constructive and specific.`;
+
+    const diff = await this.getDiff();
+
+    const userContent = `PR Analysis:
+- Files changed: ${prAnalysis.filesChanged.length}
+- Lines: +${prAnalysis.additions} -${prAnalysis.deletions}
+- Complexity: ${prAnalysis.complexity}
+- Security risks: ${prAnalysis.hasSecuritySensitiveFiles ? 'Yes' : 'No'}
+
+Please provide a review of the following code changes:
+
+\`\`\`diff
+${diff}
+\`\`\`
+`;
+
+    return `${systemMessage}\n\n${userContent}`;
+  }
+
+  private async getDiff(): Promise<string> {
+    try {
+      let output = '';
+      const args: string[] = ['diff', '--no-color'];
+      
+      if (this.baseSha) {
+        args.push(`${this.baseSha}...HEAD`);
+      }
+      
+      await exec('git', args, {
+        listeners: {
+          stdout: (data: Buffer) => {
+            output += data.toString();
+          },
         },
+      });
+      return output || 'No changes detected';
+    } catch (error) {
+      this.logger.warn('Failed to get git diff, using empty diff');
+      return 'No changes detected';
+    }
+  }
+
+  private createFallbackReview(error: string, commitSha: string): AIReviewResult {
+    this.logger.warn('Creating fallback review due to AI failure');
+    return {
+      summary: 'AI review failed. Please review the code manually.',
+      issues: [
         {
-          role: 'user',
-          content: this.buildReviewContent(prAnalysis),
+          file: 'N/A',
+          line: 0,
+          severity: 'warning',
+          category: 'bug',
+          message: `The AI reviewer encountered an error: ${error}`,
+          suggestion: 'Check the action logs for more details.',
         },
       ],
-      temperature,
-      max_tokens: maxTokens,
-    };
-    
-    return AIReviewRequestSchema.parse(prompt);
-  }
-  
-  private buildReviewContent(prAnalysis: PRAnalysisResult): string {
-    const { filesChanged, additions, deletions, complexity, hasSecuritySensitiveFiles } = prAnalysis;
-    
-    return `PR Analysis:
-- Files changed: ${filesChanged.length}
-- Lines: +${additions} -${deletions}
-- Complexity: ${complexity}
-- Security sensitive: ${hasSecuritySensitiveFiles}
-- Files: ${filesChanged.slice(0, 10).join(', ')}${filesChanged.length > 10 ? '...' : ''}
-
-Please review the code changes for security vulnerabilities, performance issues, and code quality concerns.`;
-  }
-  
-  private async callAIAPI(prompt: z.infer<typeof AIReviewRequestSchema>): Promise<string> {
-    const timeout = this.config.get('timeout');
-    
-    try {
-      const response = await axios.post(
-        'https://api.opencode.ai/v1/chat/completions',
-        prompt,
-        {
-          headers: {
-            'Authorization': `Bearer ${this.aiApiKey}`,
-            'Content-Type': 'application/json',
-          },
-          timeout,
-          validateStatus: (status) => status >= 200 && status < 300,
-        }
-      );
-      
-      const validatedResponse = AIReviewResponseSchema.parse(response.data);
-      return validatedResponse.choices[0]?.message?.content ?? 'No response content';
-      
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        const axiosError = error as AxiosError;
-        if (axiosError.response) {
-          throw new Error(`AI API error: ${axiosError.response.status} - ${JSON.stringify(axiosError.response.data)}`);
-        } else if (axiosError.request) {
-          throw new Error(`AI API request failed: ${axiosError.message}`);
-        } else {
-          throw new Error(`AI API setup error: ${axiosError.message}`);
-        }
-      }
-      throw new Error(`AI API call failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-  
-  private parseReviewResponse(responseContent: string): AIReviewResult {
-    try {
-      const parsedResponse = JSON.parse(responseContent) as unknown;
-      const validatedData = AIResponseSchema.parse(parsedResponse);
-
-      const sanitizedIssues = validatedData.issues.map(issue => ({
-        ...issue,
-        file: issue.file.replace(/[<>"'&]/g, ''),
-        message: issue.message.replace(/[<>"'&]/g, '').substring(0, 500),
-        suggestion: issue.suggestion.replace(/[<>"'&]/g, '').substring(0, 500),
-      }));
-
-      return {
-        ...validatedData,
-        summary: validatedData.summary.replace(/[<>"'&]/g, '').substring(0, 1000),
-        issues: sanitizedIssues,
-        overallScore: Math.max(1, Math.min(10, validatedData.overallScore)),
-        reviewComments: validatedData.reviewComments.map(c => c.replace(/[<>"'&]/g, '').substring(0, 500)),
-        commitSha: ''
-      };
-    } catch (error) {
-      throw new Error(`Failed to parse AI review response: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-  
-  private createFallbackReview(): AIReviewResult {
-    this.logger.warn('Creating fallback review due to AI failure');
-    
-    return {
-      summary: 'AI review unavailable - manual review required',
-      issues: [],
-      overallScore: 5,
+      overallScore: 3,
       approved: false,
-      reviewComments: ['AI analysis failed - requires human review'],
-      commitSha: ''
+      reviewComments: [],
+      commitSha,
     };
+  }
+
+  private normalizeIssues(rawIssues: unknown, changedFiles: string[]): AIReviewResult['issues'] {
+    if (!Array.isArray(rawIssues)) {
+      return [];
+    }
+
+    return rawIssues
+      .map((rawIssue) => {
+        const issue = rawIssue as Record<string, unknown>;
+        const rawFile = typeof issue['file'] === 'string' ? issue['file'] : 'N/A';
+        const normalizedFile = this.resolveIssueFile(rawFile, changedFiles);
+        const normalizedLine = this.normalizeLine(issue['line']);
+        const severity: AIReviewResult['issues'][number]['severity'] =
+          issue['severity'] === 'error' || issue['severity'] === 'warning' || issue['severity'] === 'info'
+          ? issue['severity']
+          : 'warning';
+        const category: AIReviewResult['issues'][number]['category'] =
+          issue['category'] === 'bug' || issue['category'] === 'security' || issue['category'] === 'performance' || issue['category'] === 'style' || issue['category'] === 'best-practice'
+          ? issue['category']
+          : 'bug';
+
+        return {
+          file: normalizedFile,
+          line: normalizedLine,
+          severity,
+          category,
+          message: typeof issue['message'] === 'string' ? issue['message'] : 'Potential issue detected',
+          suggestion: typeof issue['suggestion'] === 'string' ? issue['suggestion'] : 'Review this section manually.',
+        };
+      })
+      .filter(issue => issue.file !== 'N/A' && issue.line > 0);
+  }
+
+  private normalizeLine(rawLine: unknown): number {
+    if (typeof rawLine === 'number' && Number.isFinite(rawLine)) {
+      return Math.max(1, Math.floor(rawLine));
+    }
+
+    if (typeof rawLine === 'string') {
+      const firstNumber = rawLine.match(/\d+/)?.[0];
+      if (firstNumber) {
+        return Math.max(1, parseInt(firstNumber, 10));
+      }
+    }
+
+    return 0;
+  }
+
+  private resolveIssueFile(rawFile: string, changedFiles: string[]): string {
+    const cleaned = rawFile.replace(/^a\//, '').replace(/^b\//, '').trim();
+    if (!cleaned || cleaned === 'N/A') {
+      return 'N/A';
+    }
+
+    if (changedFiles.includes(cleaned)) {
+      return cleaned;
+    }
+
+    const cleanedBase = path.basename(cleaned);
+    const baseMatches = changedFiles.filter(f => path.basename(f) === cleanedBase);
+    if (baseMatches.length === 1) {
+      return baseMatches[0] ?? 'N/A';
+    }
+
+    const containsMatch = changedFiles.find(f => f.endsWith(cleaned) || cleaned.endsWith(f));
+    if (containsMatch) {
+      return containsMatch;
+    }
+
+    return 'N/A';
   }
 }
