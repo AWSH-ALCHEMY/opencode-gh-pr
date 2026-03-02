@@ -35,3 +35,28 @@ export interface AIReviewResult {
   reviewComments: string[];
   commitSha: string;
 }
+
+export interface RepoHygienePolicy {
+  version: number;
+  criticalForbiddenFiles: string[];
+  aiReview: {
+    model: string;
+    failOnDecision: 'pass' | 'fail';
+    severityThreshold: 'low' | 'medium' | 'high' | 'critical';
+    confidenceThreshold: number;
+  };
+}
+
+export interface RepoHygieneFinding {
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  confidence: number;
+  file: string;
+  reason: string;
+  suggestion: string;
+}
+
+export interface RepoHygieneResult {
+  decision: 'pass' | 'fail';
+  summary: string;
+  findings: RepoHygieneFinding[];
+}
