@@ -1,25 +1,15 @@
 {
   "version": 1,
-  "forbiddenFiles": [
+  "criticalForbiddenFiles": [
     "logs.zip",
     "run_opencode.py",
     "system_prompt.txt",
     "user_prompt.txt"
   ],
-  "forbiddenGlobs": [
-    "*.zip"
-  ],
-  "docsGlobs": [
-    "README.md",
-    "docs/*.md",
-    "docs/**/*.md",
-    "*.md"
-  ],
-  "bannedTerms": [
-    "dogfood",
-    "dogfooding",
-    "shit",
-    "fucking",
-    "damn"
-  ]
+  "aiReview": {
+    "model": "opencode-reviewer",
+    "failOnDecision": "fail",
+    "severityThreshold": "high",
+    "confidenceThreshold": 0.85
+  }
 }

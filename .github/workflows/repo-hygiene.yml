@@ -1,4 +1,4 @@
-name: "Repo Hygiene Guard"
+name: "Repo Hygiene Review"
 
 on:
   pull_request:
@@ -8,8 +8,8 @@ permissions:
   contents: read
 
 jobs:
-  hygiene:
-    name: "🧹 Repo Hygiene"
+  hygiene-ai:
+    name: "🧠 Repo Hygiene AI"
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
@@ -21,8 +21,11 @@ jobs:
       - name: "Validate policy JSON"
         run: jq . .github/repo-hygiene-policy.json >/dev/null
 
-      - name: "Run hygiene checks"
+      - name: "Install OpenCode CLI"
+        run: npm install -g opencode-ai
+
+      - name: "Run AI hygiene checks"
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: scripts/repo-hygiene-check.sh
+        run: node scripts/repo-hygiene-ai-check.js
