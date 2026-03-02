@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "required": ["summary", "issues", "overallScore", "approved", "reviewComments"],
+  "properties": {
+    "summary": { "type": "string" },
+    "issues": { "type": "array" },
+    "overallScore": { "type": "number" },
+    "approved": { "type": "boolean" },
+    "reviewComments": { "type": "array" }
+  }
+}

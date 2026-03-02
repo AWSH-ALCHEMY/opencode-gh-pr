@@ -1,0 +1,4 @@
+{
+  "type": "object",
+  "description": "Informational schema for code_apply model output. The workflow does not parse this output yet."
+}

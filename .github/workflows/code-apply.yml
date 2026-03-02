@@ -428,22 +428,26 @@ jobs:
             core.setOutput('count', String(comments.length));
             core.setOutput('path', promptPath);
 
+      - name: "Resolve code_apply prompt pack"
+        id: prompt_contract
+        run: |
+          prompt_file="$(jq -r '.packs[.active.code_apply].system' prompts/registry.json)"
+          if [ -z "$prompt_file" ] || [ "$prompt_file" = "null" ]; then
+            echo "Could not resolve code_apply prompt from prompts/registry.json"
+            exit 1
+          fi
+          if [ ! -f "$prompt_file" ]; then
+            echo "Resolved prompt file does not exist: $prompt_file"
+            exit 1
+          fi
+          echo "prompt_file=$prompt_file" >> "$GITHUB_OUTPUT"
+
       - name: "Run OpenCode apply"
         id: opencode
         continue-on-error: true
         timeout-minutes: 15
         run: |
-          cat > /tmp/code_apply_prompt.txt <<'PROMPT'
-          You are modifying this checked-out repository in-place.
-          Apply code changes that address the requested PR review comments from artifacts/code_apply_targets.json.
-          Requirements:
-          - Only change files needed to implement the requested fixes.
-          - Preserve existing behavior unless the comment requests behavioral change.
-          - Keep changes minimal and coherent.
-          - After edits, run `npm run build` and fix any build errors caused by your changes.
-          - Do not change git history and do not add generated summaries to source files.
-          Return a concise summary of what you changed.
-          PROMPT
+          cat "${{ steps.prompt_contract.outputs.prompt_file }}" > /tmp/code_apply_prompt.txt
           timeout 900 opencode run - --format json < /tmp/code_apply_prompt.txt
 
       - name: "Filter restricted workflow edits"

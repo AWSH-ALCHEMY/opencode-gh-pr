@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "required": ["decision", "summary", "findings"],
+  "properties": {
+    "decision": { "type": "string", "enum": ["pass", "fail"] },
+    "summary": { "type": "string" },
+    "findings": { "type": "array" }
+  }
+}

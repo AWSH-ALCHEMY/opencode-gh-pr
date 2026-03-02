@@ -3,14 +3,17 @@ import { exec } from '@actions/exec';
 import { Logger } from './Logger';
 import { PRAnalysisResult, AIReviewResult } from './types';
 import * as path from 'path';
+import { PromptContracts } from './PromptContracts';
 
 export class AIReviewer {
   private readonly logger: Logger;
   private readonly baseSha: string | undefined;
+  private readonly prompts: PromptContracts;
 
   constructor(options: { logger: Logger; baseSha?: string }) {
     this.logger = options.logger;
     this.baseSha = options.baseSha;
+    this.prompts = new PromptContracts({ logger: this.logger });
   }
 
   public async review(prAnalysis: PRAnalysisResult, commitSha: string): Promise<AIReviewResult | null> {
@@ -153,41 +156,18 @@ export class AIReviewer {
   }
 
   private async buildReviewContent(prAnalysis: PRAnalysisResult): Promise<string> {
-    const systemMessage = `You are an expert code reviewer. Analyze the provided code changes and respond with a JSON object containing:
-          {
-            "summary": "Brief overview of changes",
-            "issues": [
-              {
-                "file": "path/to/file",
-                "line": 123,
-                "severity": "error|warning|info",
-                "category": "bug|security|performance|style|best-practice",
-                "message": "Issue description",
-                "suggestion": "How to fix"
-              }
-            ],
-            "overallScore": 1-10,
-            "approved": true|false,
-            "reviewComments": ["general comments"]
-          }
-          Focus on security, performance, and maintainability. Be constructive and specific.`;
-
     const diff = await this.getDiff();
+    const context: Record<string, string> = {
+      files_changed_count: String(prAnalysis.filesChanged.length),
+      additions: String(prAnalysis.additions),
+      deletions: String(prAnalysis.deletions),
+      complexity: prAnalysis.complexity,
+      security_risks: prAnalysis.hasSecuritySensitiveFiles ? 'Yes' : 'No',
+      diff,
+    };
 
-    const userContent = `PR Analysis:
-- Files changed: ${prAnalysis.filesChanged.length}
-- Lines: +${prAnalysis.additions} -${prAnalysis.deletions}
-- Complexity: ${prAnalysis.complexity}
-- Security risks: ${prAnalysis.hasSecuritySensitiveFiles ? 'Yes' : 'No'}
-
-Please provide a review of the following code changes:
-
-\`\`\`diff
-${diff}
-\`\`\`
-`;
-
-    return `${systemMessage}\n\n${userContent}`;
+    const { text } = this.prompts.render('ai_review', context);
+    return text;
   }
 
   private async getDiff(): Promise<string> {
