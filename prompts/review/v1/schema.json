@@ -1,11 +1,30 @@
 {
   "type": "object",
   "required": ["summary", "issues", "overallScore", "approved", "reviewComments"],
+  "additionalProperties": false,
   "properties": {
     "summary": { "type": "string" },
-    "issues": { "type": "array" },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "line", "severity", "category", "message", "suggestion"],
+        "additionalProperties": false,
+        "properties": {
+          "file": { "type": "string" },
+          "line": { "type": "number" },
+          "severity": { "type": "string", "enum": ["error", "warning", "info"] },
+          "category": { "type": "string", "enum": ["bug", "security", "performance", "style", "best-practice"] },
+          "message": { "type": "string" },
+          "suggestion": { "type": "string" }
+        }
+      }
+    },
     "overallScore": { "type": "number" },
     "approved": { "type": "boolean" },
-    "reviewComments": { "type": "array" }
+    "reviewComments": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
   }
 }
