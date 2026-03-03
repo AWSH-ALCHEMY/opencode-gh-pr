@@ -1,11 +1,11 @@
 
-import { exec } from '@actions/exec';
 import { Logger } from './Logger';
 import { PRAnalysisResult, AIReviewResult } from './types';
 import { PromptContracts } from './PromptContracts';
 import { parseJsonLines, parseJsonWithObjectFallback } from './OpenCodeOutput';
 import { resolveChangedFile } from './ChangedFileResolver';
 import { getHeadDiff } from './GitDiff';
+import { runOpenCodeJsonPrompt } from './OpenCodeRunner';
 
 export class AIReviewer {
   private readonly logger: Logger;
@@ -48,35 +48,11 @@ export class AIReviewer {
 
   private async callAIAPI(prAnalysis: PRAnalysisResult): Promise<string> {
     const fullPrompt = await this.buildReviewContent(prAnalysis);
-
-    let output = '';
-    let errorOutput = '';
-    const options: {
-      listeners: {
-        stdout: (data: Buffer) => void;
-        stderr: (data: Buffer) => void;
-      };
-      input: Buffer;
-    } = {
-      listeners: {
-        stdout: (data: Buffer) => {
-          output += data.toString();
-        },
-        stderr: (data: Buffer) => {
-          errorOutput += data.toString();
-        },
-      },
-      input: Buffer.from(fullPrompt, 'utf8'),
-    };
-
-    const args = ['run', '-', '--format', 'json'];
     this.logger.info(`Running OpenCode CLI, piping prompt to stdin`);
-
-    await exec('opencode', args, options);
-
-    if (errorOutput) {
-      this.logger.warn(`OpenCode CLI stderr: ${errorOutput}`);
-    }
+    const output = await runOpenCodeJsonPrompt(fullPrompt, {
+      logger: this.logger,
+      stderrLabel: 'OpenCode CLI stderr output detected',
+    });
 
     let lastJson = '';
     let extractedReviewJson = '';

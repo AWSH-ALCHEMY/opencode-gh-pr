@@ -1,9 +1,9 @@
-import { exec } from '@actions/exec';
 import { Logger } from './Logger';
 import { RepoHygieneResult, RepoHygienePolicy } from './types';
 import { PromptContracts } from './PromptContracts';
 import { extractTextPayloads, parseJsonLines, parseJsonWithObjectFallback } from './OpenCodeOutput';
 import { getChangedFilesBetween, getDiffBetween } from './GitDiff';
+import { runOpenCodeJsonPrompt } from './OpenCodeRunner';
 
 const SEVERITY_RANK: Record<'low' | 'medium' | 'high' | 'critical', number> = {
   low: 1,
@@ -93,26 +93,10 @@ export class RepoHygieneReviewer {
 
   private async callOpenCode(diff: string, changedFiles: string[]): Promise<string> {
     const prompt = this.buildPrompt(diff, changedFiles);
-    let output = '';
-    let errorOutput = '';
-
-    await exec('opencode', ['run', '-', '--format', 'json'], {
-      input: Buffer.from(prompt, 'utf8'),
-      listeners: {
-        stdout: (data: Buffer) => {
-          output += data.toString();
-        },
-        stderr: (data: Buffer) => {
-          errorOutput += data.toString();
-        },
-      },
+    const output = await runOpenCodeJsonPrompt(prompt, {
+      logger: this.logger,
+      stderrLabel: 'Repo hygiene OpenCode stderr output detected',
     });
-
-    if (errorOutput) {
-      this.logger.warn('Repo hygiene OpenCode stderr output detected', {
-        stderr: errorOutput.substring(0, 2000),
-      });
-    }
 
     const jsonTextEvents = extractTextPayloads(parseJsonLines(output));
 
