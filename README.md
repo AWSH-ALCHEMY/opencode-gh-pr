@@ -1,67 +1,48 @@
+# OpenCode PR Review Workflows
 
-# 🚀 Secure PR Review Action - Dogfooding Guide
+GitHub Actions workflows for AI-assisted pull request review and targeted `/code_apply` fixes.
 
-This repository is now set up for **dogfooding** - using our own action to review itself. Follow these steps to see it in action.
+## Workflows
 
-## 📋 Step 1: Set Up Repository Secrets
+- `.github/workflows/main.yml`
+  - Runs Secure PR Review on pull requests.
+  - Builds action artifacts and posts AI review output (summary, inline review, labels, checks).
+- `.github/workflows/repo-hygiene.yml`
+  - Runs Repo Hygiene AI checks against PR diff using `.github/repo-hygiene-policy.json`.
+- `.github/workflows/code-apply.yml`
+  - Handles `/code_apply` commands from PR conversation comments.
+  - Creates isolated apply branches and child PRs.
 
-Before you can run the action, you need to add the AI service API key as a secret.
+## Key Config
 
-1.  **Go to your repository settings** on GitHub.
-2.  Navigate to **Settings > Secrets and variables > Actions**.
-3.  Click **New repository secret**.
-4.  Create a secret with the following name and value:
-    -   **Name**: `OPENCODE_API_KEY`
-    -   **Value**: *Your API key for the AI review service.*
+- `.github/code-apply-policy.json`: command authorization, label gating, and apply behavior.
+- `.github/repo-hygiene-policy.json`: forbidden files + severity/confidence fail thresholds.
+- `prompts/registry.json` and `prompts/*`: prompt packs for review, hygiene, and code apply.
 
-## 🚀 Step 2: Create a Pull Request
+## Command Notes
 
-Now, you need to commit all the files we've created and open a pull request. This will trigger the `dogfood.yml` workflow.
+`code-apply.yml` can start on any PR `issue_comment`, but command logic only executes when the comment body is a single-line standalone command:
 
-**From your local machine:**
+- `/code_apply <comment_id>`
+- `/code_apply --all --force`
 
-1.  **Create a new branch:**
-    ```bash
-    git checkout -b feat/dogfood-setup
-    ```
+Narrative mentions (for example, "we can use /code_apply later") are ignored.
 
-2.  **Add all the new files:**
-    ```bash
-    git add .
-    ```
+## Architecture Docs
 
-3.  **Commit the changes:**
-    ```bash
-    git commit -m "feat: setup secure PR review action and dogfooding workflow"
-    ```
+- [Code Apply Child PR Design](docs/code-apply-child-pr-design.md)
+- [Prompt Contracts](docs/prompt-contracts.md)
 
-4.  **Push the branch to GitHub:**
-    ```bash
-    git push origin feat/dogfood-setup
-    ```
+## Local Dev
 
-5.  **Open a Pull Request:**
-    -   Go to your repository on GitHub.
-    -   You will see a prompt to create a pull request from the `feat/dogfood-setup` branch.
-    -   Click **"Compare & pull request"** and create the PR.
+```bash
+npm ci
+npm run build
+npm test
+```
 
-## 📊 Step 3: Observe the Results
+For full validation:
 
-Once you create the pull request, the **"🐕 Dogfood - Secure PR Review Action"** workflow will automatically start.
-
--   **Check the "Actions" tab** of your repository to see the workflow running.
--   **Look at your pull request** to see the comments, checks, and labels created by the action itself.
-
-This process proves that our action is not only functional but also robust enough to analyze its own source code, providing a powerful, self-validating quality gate.
-
----
-
-For more detailed instructions, refer to the [DOGFOODING.md](DOGFOODING.md) guide.
-
-This is a test change to trigger the dogfooding workflow.
-
-## Architecture Notes
-
-- [`/code_apply` child PR design](docs/code-apply-child-pr-design.md)
-- [`/code_apply` policy config](.github/code-apply-policy.json)
-- [`Prompt contracts`](docs/prompt-contracts.md)
+```bash
+npm run all
+```
