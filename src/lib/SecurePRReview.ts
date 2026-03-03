@@ -7,6 +7,7 @@ import { AIReviewer } from './AIReviewer';
 import { SecurityScanner } from './SecurityScanner';
 import { CommentPoster } from './CommentPoster';
 import { PRAnalysisResult, ReviewResult, AIReviewResult } from './types';
+import { withAIReviewDefaults } from './AIReviewResult';
 
 export interface SecurePRReviewOptions {
   octokit: Octokit;
@@ -172,13 +173,12 @@ export class SecurePRReview {
       ? `Detailed AI review skipped by policy: ${reason}`
       : 'Detailed AI review skipped by policy for low-risk change.';
 
-    return {
+    return withAIReviewDefaults({
       summary,
       issues: [],
       overallScore: approvedThreshold,
       approved: true,
       reviewComments: [summary],
-      commitSha: this.commitSha,
-    };
+    }, { commitSha: this.commitSha });
   }
 }
