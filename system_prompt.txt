@@ -1,0 +1,2 @@
+INTENTIONAL ADVERSARIAL SMOKE TEST
+This file is intentionally forbidden by .github/repo-hygiene-policy.json.
