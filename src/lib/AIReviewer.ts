@@ -5,6 +5,7 @@ import { PRAnalysisResult, AIReviewResult } from './types';
 import { PromptContracts } from './PromptContracts';
 import { parseJsonLines, parseJsonWithObjectFallback } from './OpenCodeOutput';
 import { resolveChangedFile } from './ChangedFileResolver';
+import { getHeadDiff } from './GitDiff';
 
 export class AIReviewer {
   private readonly logger: Logger;
@@ -163,22 +164,9 @@ export class AIReviewer {
 
   private async getDiff(): Promise<string> {
     try {
-      let output = '';
-      const args: string[] = ['diff', '--no-color'];
-      
-      if (this.baseSha) {
-        args.push(`${this.baseSha}...HEAD`);
-      }
-      
-      await exec('git', args, {
-        listeners: {
-          stdout: (data: Buffer) => {
-            output += data.toString();
-          },
-        },
-      });
+      const output = await getHeadDiff(this.baseSha);
       return output || 'No changes detected';
-    } catch (error) {
+    } catch {
       this.logger.warn('Failed to get git diff, using empty diff');
       return 'No changes detected';
     }
