@@ -47,11 +47,13 @@ jobs:
             const payload = context.payload;
             const comment = payload.comment;
             const body = (comment?.body || '').trim();
-            const firstLine = body.split(/\r?\n/)[0] || '';
+            const firstLine = (body.split(/\r?\n/)[0] || '').trim();
             const match = firstLine.match(/^\/code_apply(?:\s+(.+))?$/i);
+            const isSingleLineCommand = body === firstLine;
+            const isBotComment = comment?.user?.type === 'Bot';
 
             const setOutput = (key, value) => core.setOutput(key, value);
-            setOutput('should_run', match ? 'true' : 'false');
+            setOutput('should_run', 'false');
             setOutput('should_apply', 'false');
             setOutput('pr_number', '');
             setOutput('head_ref', '');
@@ -73,10 +75,11 @@ jobs:
               return;
             }
 
-            if (comment?.user?.type === 'Bot') {
-              setOutput('feedback', 'Ignoring bot command comment.');
+            if (!isSingleLineCommand || isBotComment) {
               return;
             }
+
+            setOutput('should_run', 'true');
 
             const defaultPolicy = {
               version: 1,
