@@ -6,6 +6,7 @@ import { isAIReviewPayload, parseJsonLines, parseJsonWithObjectFallback } from '
 import { resolveChangedFile } from './ChangedFileResolver';
 import { getHeadDiff } from './GitDiff';
 import { runOpenCodeJsonPrompt } from './OpenCodeRunner';
+import { withAIReviewDefaults } from './AIReviewResult';
 
 export class AIReviewer {
   private readonly logger: Logger;
@@ -28,13 +29,15 @@ export class AIReviewer {
         return this.createFallbackReview('AI review returned an empty response.', commitSha);
       }
 
-      const reviewResult = JSON.parse(rawResponse) as AIReviewResult;
-      reviewResult.issues = this.normalizeIssues(reviewResult.issues, prAnalysis.filesChanged);
-      reviewResult.reviewComments = reviewResult.reviewComments || [];
-      reviewResult.summary = reviewResult.summary || 'AI analysis complete.';
-      reviewResult.overallScore = typeof reviewResult.overallScore === 'number' ? reviewResult.overallScore : 0;
-      reviewResult.approved = typeof reviewResult.approved === 'boolean' ? reviewResult.approved : false;
-      reviewResult.commitSha = commitSha; // Ensure commitSha is part of the final result
+      const parsedReview = JSON.parse(rawResponse) as AIReviewResult;
+      const normalizedIssues = this.normalizeIssues(parsedReview.issues, prAnalysis.filesChanged);
+      const reviewResult = withAIReviewDefaults(
+        {
+          ...parsedReview,
+          issues: normalizedIssues,
+        },
+        { commitSha, defaultSummary: 'AI analysis complete.' }
+      );
       this.logger.info('Successfully parsed AI review response.');
       return reviewResult;
     } catch (error) {
