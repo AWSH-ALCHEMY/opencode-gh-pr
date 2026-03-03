@@ -267,6 +267,8 @@ export class CommentPoster {
     const totalInlineComments = (review.issues || []).filter(issue => issue.file && issue.file !== 'N/A' && issue.line > 0).length;
     const truncatedCount = totalInlineComments - Math.min(inlineComments.length, MAX_INLINE_COMMENTS);
     const displayComments = inlineComments.slice(0, MAX_INLINE_COMMENTS);
+    const reviewEvent: 'APPROVE' | 'REQUEST_CHANGES' = review.approved ? 'APPROVE' : 'REQUEST_CHANGES';
+    const reviewHeading = review.approved ? '✅ AI Approval Review' : '❌ AI Change Request Review';
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const pullsApi = this.octokit.pulls as unknown as {
@@ -275,7 +277,7 @@ export class CommentPoster {
         repo: string;
         pull_number: number;
         commit_id: string;
-        event: 'COMMENT';
+        event: 'COMMENT' | 'APPROVE' | 'REQUEST_CHANGES';
         body: string;
         comments?: Array<{
           path: string;
@@ -292,8 +294,8 @@ export class CommentPoster {
         repo: this.repo.repo,
         pull_number: this.prNumber,
         commit_id: review.commitSha,
-        event: 'COMMENT',
-        body: `## 🤖 AI Review (No Inline Targets)\n\nNo valid inline diff locations were found, so this review was posted without inline anchors.\n\n${marker}`,
+        event: reviewEvent,
+        body: `## ${reviewHeading}\n\nNo valid inline diff locations were found, so this review was posted without inline anchors.\n\n${marker}`,
       });
       this.logger.info('Posted PR review without inline anchors.');
       return;
@@ -305,8 +307,8 @@ export class CommentPoster {
       repo: this.repo.repo,
       pull_number: this.prNumber,
       commit_id: review.commitSha,
-      event: 'COMMENT',
-      body: `## 🤖 AI Inline Review\n\nPosted ${displayComments.length} inline comments for this commit.${truncationWarning}\n\n${marker}`,
+      event: reviewEvent,
+      body: `## ${reviewHeading}\n\nPosted ${displayComments.length} inline comments for this commit.${truncationWarning}\n\n${marker}`,
       comments: displayComments,
     });
 
