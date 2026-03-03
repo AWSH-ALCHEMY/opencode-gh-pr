@@ -67,9 +67,7 @@ export class ActionConfig {
       maxTokens: 2000,
       timeout: 30000,
       approvedThreshold: 7,
-      // Temporarily disabled: pending investigation of false positives in security pattern matching
-      // TODO: Re-enable once pattern matching is improved (see issue #1234)
-      securityAnalysis: false,
+      securityAnalysis: true,
       performanceCheck: true,
       documentationCheck: true,
       securityPatterns: [
