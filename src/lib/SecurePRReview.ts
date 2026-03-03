@@ -112,6 +112,10 @@ export class SecurePRReview {
         if (aiReview) {
           await this.commentPoster.postReview(aiReview);
         }
+      } else {
+        this.logger.info('Step 3/4: Skipping detailed AI review based on policy; posting approval review.');
+        aiReview = this.createSkippedReviewResult(prAnalysis.reason);
+        await this.commentPoster.postReview(aiReview);
       }
 
       this.logger.info('Step 4/4: Creating final summary...');
@@ -159,6 +163,22 @@ export class SecurePRReview {
       filesAnalyzed: 0,
       approved: false,
       summary: `Review failed: ${reason}. Manual review required.`,
+    };
+  }
+
+  private createSkippedReviewResult(reason?: string): AIReviewResult {
+    const approvedThreshold = this.config.get('approvedThreshold');
+    const summary = reason
+      ? `Detailed AI review skipped by policy: ${reason}`
+      : 'Detailed AI review skipped by policy for low-risk change.';
+
+    return {
+      summary,
+      issues: [],
+      overallScore: approvedThreshold,
+      approved: true,
+      reviewComments: [summary],
+      commitSha: this.commitSha,
     };
   }
 }
