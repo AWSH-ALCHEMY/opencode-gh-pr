@@ -2,6 +2,7 @@ import { exec } from '@actions/exec';
 import { Logger } from './Logger';
 import { RepoHygieneResult, RepoHygienePolicy } from './types';
 import { PromptContracts } from './PromptContracts';
+import { extractTextPayloads, parseJsonLines, parseJsonWithObjectFallback } from './OpenCodeOutput';
 
 const SEVERITY_RANK: Record<'low' | 'medium' | 'high' | 'critical', number> = {
   low: 1,
@@ -131,25 +132,7 @@ export class RepoHygieneReviewer {
       });
     }
 
-    const jsonTextEvents: string[] = [];
-    for (const line of output.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) {
-        continue;
-      }
-      try {
-        const event = JSON.parse(trimmed) as Record<string, unknown>;
-        if (event['type'] === 'text') {
-          const part = event['part'] as Record<string, unknown> | undefined;
-          const text = part && typeof part['text'] === 'string' ? part['text'] : '';
-          if (text) {
-            jsonTextEvents.push(text);
-          }
-        }
-      } catch {
-        continue;
-      }
-    }
+    const jsonTextEvents = extractTextPayloads(parseJsonLines(output));
 
     if (jsonTextEvents.length === 0) {
       throw new Error('No text payload events found in OpenCode output.');
@@ -166,7 +149,7 @@ export class RepoHygieneReviewer {
     };
 
     try {
-      const parsed = this.parseJsonWithObjectFallback(raw) as Partial<RepoHygieneResult>;
+      const parsed = parseJsonWithObjectFallback(raw) as Partial<RepoHygieneResult>;
       const decision = parsed.decision === 'pass' || parsed.decision === 'fail' ? parsed.decision : 'fail';
       const summary = typeof parsed.summary === 'string' ? parsed.summary : fallback.summary;
       const findings = Array.isArray(parsed.findings)
@@ -206,19 +189,6 @@ export class RepoHygieneReviewer {
     };
     const { text } = this.prompts.render('hygiene_review', context);
     return text;
-  }
-
-  private parseJsonWithObjectFallback(raw: string): unknown {
-    try {
-      return JSON.parse(raw);
-    } catch {
-      const start = raw.indexOf('{');
-      const end = raw.lastIndexOf('}');
-      if (start >= 0 && end > start) {
-        return JSON.parse(raw.slice(start, end + 1));
-      }
-      throw new Error('No parseable JSON object in AI output.');
-    }
   }
 
   private normalizeSeverity(value: unknown): 'low' | 'medium' | 'high' | 'critical' {
