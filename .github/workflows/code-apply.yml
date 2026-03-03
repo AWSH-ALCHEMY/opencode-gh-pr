@@ -203,6 +203,15 @@ jobs:
               repo: context.repo.repo,
               pull_number: prNumber,
             });
+            setOutput('pr_number', String(prNumber));
+
+            if (pr.data.state !== 'open') {
+              setOutput(
+                'feedback',
+                `\`/code_apply\` only runs on open pull requests. PR #${prNumber} is currently \`${pr.data.state}\`.`
+              );
+              return;
+            }
 
             if (pr.data.state !== 'open') {
               setOutput(
@@ -213,7 +222,6 @@ jobs:
             }
 
             const isFork = pr.data.head.repo.full_name !== `${context.repo.owner}/${context.repo.repo}`;
-            setOutput('pr_number', String(prNumber));
             setOutput('head_ref', pr.data.head.ref);
             setOutput('head_sha', pr.data.head.sha);
             setOutput('base_ref', pr.data.base.ref);
