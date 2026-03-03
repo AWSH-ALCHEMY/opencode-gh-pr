@@ -7,21 +7,30 @@
       "requireLabel": "ai-apply-approved",
       "allowAll": false,
       "maxCommentsPerRun": 5,
-      "requireForceForAll": true
+      "requireForceForAll": true,
+      "splitByTopic": true,
+      "simpleBatchTopics": ["rename-style", "docs"],
+      "maxTopicGroupsPerRun": 5
     },
     "balanced": {
       "allowedAuthorAssociations": ["OWNER", "MEMBER", "COLLABORATOR"],
       "requireLabel": "ai-apply-approved",
       "allowAll": true,
       "maxCommentsPerRun": 30,
-      "requireForceForAll": true
+      "requireForceForAll": true,
+      "splitByTopic": true,
+      "simpleBatchTopics": ["rename-style", "docs"],
+      "maxTopicGroupsPerRun": 8
     },
     "open": {
       "allowedAuthorAssociations": ["OWNER", "MEMBER", "COLLABORATOR", "CONTRIBUTOR"],
       "requireLabel": "",
       "allowAll": true,
       "maxCommentsPerRun": 50,
-      "requireForceForAll": true
+      "requireForceForAll": true,
+      "splitByTopic": true,
+      "simpleBatchTopics": ["rename-style", "docs"],
+      "maxTopicGroupsPerRun": 10
     }
   }
 }

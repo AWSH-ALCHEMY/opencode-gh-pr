@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "active": {
+    "ai_review": "review_v1",
+    "code_apply": "code_apply_v1",
+    "hygiene_review": "hygiene_v1"
+  },
+  "packs": {
+    "review_v1": {
+      "id": "ai_review",
+      "version": "1.0.0",
+      "riskTier": "medium",
+      "system": "prompts/review/v1/system.prompt.md",
+      "template": "prompts/review/v1/user.prompt.md",
+      "schema": "prompts/review/v1/schema.json"
+    },
+    "code_apply_v1": {
+      "id": "code_apply",
+      "version": "1.0.0",
+      "riskTier": "high",
+      "system": "prompts/code_apply/v1/system.prompt.md",
+      "schema": "prompts/code_apply/v1/schema.json"
+    },
+    "hygiene_v1": {
+      "id": "hygiene_review",
+      "version": "1.0.0",
+      "riskTier": "medium",
+      "system": "prompts/hygiene/v1/system.prompt.md",
+      "template": "prompts/hygiene/v1/user.prompt.md",
+      "schema": "prompts/hygiene/v1/schema.json"
+    }
+  }
+}

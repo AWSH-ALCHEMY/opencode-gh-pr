@@ -1,6 +1,7 @@
 import { exec } from '@actions/exec';
 import { Logger } from './Logger';
 import { RepoHygieneResult, RepoHygienePolicy } from './types';
+import { PromptContracts } from './PromptContracts';
 
 const SEVERITY_RANK: Record<'low' | 'medium' | 'high' | 'critical', number> = {
   low: 1,
@@ -12,10 +13,12 @@ const SEVERITY_RANK: Record<'low' | 'medium' | 'high' | 'critical', number> = {
 export class RepoHygieneReviewer {
   private readonly logger: Logger;
   private readonly policy: RepoHygienePolicy;
+  private readonly prompts: PromptContracts;
 
   constructor(options: { logger: Logger; policy: RepoHygienePolicy }) {
     this.logger = options.logger;
     this.policy = options.policy;
+    this.prompts = new PromptContracts({ logger: this.logger });
   }
 
   public async run(baseSha: string, headSha: string): Promise<{
@@ -196,36 +199,13 @@ export class RepoHygieneReviewer {
   }
 
   private buildPrompt(diff: string, changedFiles: string[]): string {
-    return `You are reviewing a GitHub PR for repository hygiene and documentation professionalism.
-
-Focus on:
-1) Professional tone and clarity in docs/prose
-2) Debug, temporary, generated, or investigation artifacts
-3) Merge readiness from a hygiene perspective
-
-Respond with ONLY valid JSON in this exact schema:
-{
-  "decision": "pass" | "fail",
-  "summary": "string",
-  "findings": [
-    {
-      "severity": "low" | "medium" | "high" | "critical",
-      "confidence": 0.0,
-      "file": "path/to/file",
-      "reason": "short explanation",
-      "suggestion": "short actionable suggestion"
-    }
-  ]
-}
-
-Changed files:
-${changedFiles.map((f) => `- ${f}`).join('\n')}
-
-Policy thresholds:
-${JSON.stringify(this.policy.aiReview, null, 2)}
-
-Diff:
-${diff}`;
+    const context: Record<string, string> = {
+      changed_files_list: changedFiles.map((f) => `- ${f}`).join('\n'),
+      policy_json: JSON.stringify(this.policy.aiReview, null, 2),
+      diff,
+    };
+    const { text } = this.prompts.render('hygiene_review', context);
+    return text;
   }
 
   private parseJsonWithObjectFallback(raw: string): unknown {

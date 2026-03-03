@@ -98,6 +98,9 @@ Supported profile fields:
 - `allowAll` (boolean): whether `/code_apply --all` is allowed
 - `maxCommentsPerRun` (number): hard cap on target comments per command
 - `requireForceForAll` (boolean): require `/code_apply --all --force` instead of plain `--all`
+- `splitByTopic` (boolean): split eligible comments into topic buckets and process each bucket independently
+- `simpleBatchTopics` (array): topic names that should be grouped into one `simple-batch` bucket
+- `maxTopicGroupsPerRun` (number): hard cap on number of topic buckets spawned in a single `/code_apply` run
 
 Operational note:
 
@@ -116,14 +119,14 @@ Use current `.github/workflows/code-apply.yml` with a two-job structure plus chi
 - Resolve source PR and target comment IDs
 - Output source PR head ref + SHA
 
-2. `apply`
+2. `apply` (matrix by topic bucket)
 - Checkout source PR head SHA
-- Create bot branch name
-- Collect target comments and run OpenCode
+- Create bot branch name per topic bucket
+- Collect bucket comments and run OpenCode
 - Revert restricted workflow-file changes if any
 - Commit and push bot branch if diff exists
-- Create or update child PR
-- Post status comment to source PR with child PR link
+- Create child PR per topic bucket
+- Post status comment to source PR with topic + child PR link
 
 3. `feedback`
 - Same as now for invalid commands or blocked runs

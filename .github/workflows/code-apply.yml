@@ -23,6 +23,7 @@ jobs:
       head_sha: ${{ steps.resolve.outputs.head_sha }}
       is_fork: ${{ steps.resolve.outputs.is_fork }}
       target_ids_json: ${{ steps.resolve.outputs.target_ids_json }}
+      target_groups_json: ${{ steps.resolve.outputs.target_groups_json }}
       feedback: ${{ steps.resolve.outputs.feedback }}
       policy_profile: ${{ steps.resolve.outputs.policy_profile }}
       policy_source: ${{ steps.resolve.outputs.policy_source }}
@@ -50,6 +51,7 @@ jobs:
             setOutput('head_sha', '');
             setOutput('is_fork', '');
             setOutput('target_ids_json', '[]');
+            setOutput('target_groups_json', '[]');
             setOutput('feedback', '');
             setOutput('policy_profile', '');
             setOutput('policy_source', '');
@@ -76,6 +78,9 @@ jobs:
                   allowAll: true,
                   maxCommentsPerRun: 50,
                   requireForceForAll: true,
+                  splitByTopic: true,
+                  simpleBatchTopics: ['rename-style', 'docs'],
+                  maxTopicGroupsPerRun: 8,
                 },
               },
             };
@@ -102,12 +107,32 @@ jobs:
               const requireForceForAll = typeof raw?.requireForceForAll === 'boolean'
                 ? raw.requireForceForAll
                 : defaultPolicy.profiles.balanced.requireForceForAll;
+              const splitByTopic = typeof raw?.splitByTopic === 'boolean'
+                ? raw.splitByTopic
+                : defaultPolicy.profiles.balanced.splitByTopic;
+              const simpleBatchTopicsRaw = Array.isArray(raw?.simpleBatchTopics)
+                ? raw.simpleBatchTopics
+                : defaultPolicy.profiles.balanced.simpleBatchTopics;
+              const simpleBatchTopics = Array.from(
+                new Set(
+                  simpleBatchTopicsRaw
+                    .map((value) => String(value).trim().toLowerCase())
+                    .filter((value) => value.length > 0)
+                )
+              );
+              const maxTopicGroupsPerRunRaw = Number(raw?.maxTopicGroupsPerRun);
+              const maxTopicGroupsPerRun = Number.isInteger(maxTopicGroupsPerRunRaw) && maxTopicGroupsPerRunRaw > 0
+                ? maxTopicGroupsPerRunRaw
+                : defaultPolicy.profiles.balanced.maxTopicGroupsPerRun;
               return {
                 allowedAuthorAssociations,
                 requireLabel,
                 allowAll,
                 maxCommentsPerRun,
                 requireForceForAll,
+                splitByTopic,
+                simpleBatchTopics,
+                maxTopicGroupsPerRun,
               };
             };
 
@@ -216,6 +241,25 @@ jobs:
             const targetIds = [];
             let usedForceAll = false;
 
+            const classifyTopic = (reviewComment) => {
+              const bodyText = String(reviewComment?.body || '').toLowerCase();
+              const filePath = String(reviewComment?.path || '').toLowerCase();
+              if (filePath.startsWith('.github/workflows/')) return 'workflow';
+              if (bodyText.includes('security') || filePath.includes('auth') || filePath.includes('permission')) return 'security';
+              if (bodyText.includes('performance') || bodyText.includes('perf')) return 'performance';
+              if (bodyText.includes('refactor')) return 'refactor';
+              if (bodyText.includes('test') || filePath.includes('__tests__') || filePath.includes('/test/') || filePath.includes('.test.')) return 'tests';
+              if (bodyText.includes('rename') || bodyText.includes('naming') || bodyText.includes('style') || bodyText.includes('typo') || bodyText.includes('spelling')) return 'rename-style';
+              if (bodyText.includes('docs') || bodyText.includes('documentation') || filePath.endsWith('.md') || filePath.includes('/docs/')) return 'docs';
+              return 'bugfix';
+            };
+
+            const toSlug = (value) => String(value)
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, '-')
+              .replace(/^-+|-+$/g, '')
+              .slice(0, 40) || 'topic';
+
             const validateCommentId = async (id) => {
               const c = await github.rest.pulls.getReviewComment({
                 owner: context.repo.owner,
@@ -230,7 +274,7 @@ jobs:
               if (!aiLogins.has(c.data.user?.login || '')) {
                 throw new Error(`Comment ${id} is not an AI review comment.`);
               }
-              return id;
+              return c.data;
             };
 
             if (!arg || (tokens.length === 1 && tokens[0] === 'this')) {
@@ -241,7 +285,8 @@ jobs:
               const parentId = comment.in_reply_to_id || null;
               const candidateId = parentId || comment.id;
               try {
-                targetIds.push(await validateCommentId(candidateId));
+                const resolved = await validateCommentId(candidateId);
+                targetIds.push(resolved.id);
               } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
                 setOutput('feedback', `Could not resolve target comment: ${msg}`);
@@ -287,7 +332,8 @@ jobs:
               targetIds.push(...filtered);
             } else if (tokens.length === 1 && /^\d+$/.test(tokens[0])) {
               try {
-                targetIds.push(await validateCommentId(Number(tokens[0])));
+                const resolved = await validateCommentId(Number(tokens[0]));
+                targetIds.push(resolved.id);
               } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
                 setOutput('feedback', `Invalid comment id: ${msg}`);
@@ -308,7 +354,41 @@ jobs:
               return;
             }
 
+            const resolvedComments = [];
+            for (const id of targetIds) {
+              const reviewComment = await validateCommentId(id);
+              resolvedComments.push(reviewComment);
+            }
+
+            const simpleTopicSet = new Set(profile.simpleBatchTopics);
+            const grouped = {};
+            for (const reviewComment of resolvedComments) {
+              const topic = classifyTopic(reviewComment);
+              const bucket = profile.splitByTopic
+                ? (simpleTopicSet.has(topic) ? 'simple-batch' : topic)
+                : 'all';
+              if (!grouped[bucket]) {
+                grouped[bucket] = [];
+              }
+              grouped[bucket].push(reviewComment.id);
+            }
+
+            const groups = Object.entries(grouped).map(([topic, ids]) => ({
+              topic,
+              slug: toSlug(topic),
+              ids,
+            }));
+
+            if (groups.length > profile.maxTopicGroupsPerRun) {
+              setOutput(
+                'feedback',
+                `Resolved ${groups.length} topic groups which exceeds policy max (${profile.maxTopicGroupsPerRun}) for profile \`${profileName}\`.`
+              );
+              return;
+            }
+
             setOutput('target_ids_json', JSON.stringify(targetIds));
+            setOutput('target_groups_json', JSON.stringify(groups));
             setOutput('should_apply', 'true');
 
   feedback:
@@ -363,11 +443,15 @@ jobs:
             }
 
   apply:
-    name: "Apply Requested Changes"
-    if: needs.resolve-command.outputs.should_apply == 'true'
+    name: "Apply Requested Changes (${{ matrix.group.topic }})"
+    if: needs.resolve-command.outputs.should_apply == 'true' && needs.resolve-command.outputs.target_groups_json != '[]'
     needs: [resolve-command]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        group: ${{ fromJSON(needs.resolve-command.outputs.target_groups_json) }}
     permissions:
       contents: write
       pull-requests: write
@@ -382,7 +466,7 @@ jobs:
       - name: "Create apply branch"
         id: branch
         run: |
-          branch_name="codeapply/pr-${{ needs.resolve-command.outputs.pr_number }}/run-${GITHUB_RUN_ID}"
+          branch_name="codeapply/pr-${{ needs.resolve-command.outputs.pr_number }}/run-${GITHUB_RUN_ID}/${{ matrix.group.slug }}"
           git checkout -b "$branch_name"
           echo "name=$branch_name" >> "$GITHUB_OUTPUT"
 
@@ -402,7 +486,7 @@ jobs:
         id: collect
         uses: actions/github-script@v7
         env:
-          TARGET_IDS_JSON: ${{ needs.resolve-command.outputs.target_ids_json }}
+          TARGET_IDS_JSON: ${{ toJSON(matrix.group.ids) }}
         with:
           script: |
             const fs = require('fs');
@@ -428,22 +512,26 @@ jobs:
             core.setOutput('count', String(comments.length));
             core.setOutput('path', promptPath);
 
+      - name: "Resolve code_apply prompt pack"
+        id: prompt_contract
+        run: |
+          prompt_file="$(jq -r '.packs[.active.code_apply].system' prompts/registry.json)"
+          if [ -z "$prompt_file" ] || [ "$prompt_file" = "null" ]; then
+            echo "Could not resolve code_apply prompt from prompts/registry.json"
+            exit 1
+          fi
+          if [ ! -f "$prompt_file" ]; then
+            echo "Resolved prompt file does not exist: $prompt_file"
+            exit 1
+          fi
+          echo "prompt_file=$prompt_file" >> "$GITHUB_OUTPUT"
+
       - name: "Run OpenCode apply"
         id: opencode
         continue-on-error: true
         timeout-minutes: 15
         run: |
-          cat > /tmp/code_apply_prompt.txt <<'PROMPT'
-          You are modifying this checked-out repository in-place.
-          Apply code changes that address the requested PR review comments from artifacts/code_apply_targets.json.
-          Requirements:
-          - Only change files needed to implement the requested fixes.
-          - Preserve existing behavior unless the comment requests behavioral change.
-          - Keep changes minimal and coherent.
-          - After edits, run `npm run build` and fix any build errors caused by your changes.
-          - Do not change git history and do not add generated summaries to source files.
-          Return a concise summary of what you changed.
-          PROMPT
+          cat "${{ steps.prompt_contract.outputs.prompt_file }}" > /tmp/code_apply_prompt.txt
           timeout 900 opencode run - --format json < /tmp/code_apply_prompt.txt
 
       - name: "Filter restricted workflow edits"
@@ -511,22 +599,24 @@ jobs:
         continue-on-error: true
         uses: actions/github-script@v7
         env:
-          TARGET_IDS_JSON: ${{ needs.resolve-command.outputs.target_ids_json }}
+          TARGET_IDS_JSON: ${{ toJSON(matrix.group.ids) }}
         with:
           script: |
             const prNumber = Number('${{ needs.resolve-command.outputs.pr_number }}');
             const sourceHeadRef = '${{ needs.resolve-command.outputs.head_ref }}';
             const applyBranch = '${{ steps.branch.outputs.name }}';
             const count = '${{ steps.collect.outputs.count }}';
+            const topic = '${{ matrix.group.topic }}';
             const commandText = '${{ needs.resolve-command.outputs.command_text }}';
             const requestedBy = '${{ needs.resolve-command.outputs.requested_by }}';
             const targetIds = JSON.parse(process.env.TARGET_IDS_JSON || '[]');
-            const title = `code_apply: suggested fixes for PR #${prNumber} (${count} comment(s))`;
-            const marker = `<!-- code_apply:source_pr=${prNumber} -->`;
+            const title = `code_apply(${topic}): suggested fixes for PR #${prNumber} (${count} comment(s))`;
+            const marker = `<!-- code_apply:source_pr=${prNumber} topic=${topic} -->`;
             const body = [
               marker,
               '',
               `Source PR: #${prNumber}`,
+              `Topic: ${topic}`,
               `Requested by: @${requestedBy}`,
               `Command: \`${commandText}\``,
               `Target comment IDs: ${targetIds.join(', ') || 'none'}`,
@@ -550,7 +640,7 @@ jobs:
         if: steps.opencode.outcome == 'success' && steps.commit.outputs.changed == 'true'
         uses: actions/github-script@v7
         env:
-          TARGET_IDS_JSON: ${{ needs.resolve-command.outputs.target_ids_json }}
+          TARGET_IDS_JSON: ${{ toJSON(matrix.group.ids) }}
         with:
           script: |
             const ids = JSON.parse(process.env.TARGET_IDS_JSON || '[]');
@@ -602,6 +692,8 @@ jobs:
             const opencodeOutcome = '${{ steps.opencode.outcome }}';
             const changed = '${{ steps.commit.outputs.changed }}' === 'true';
             const count = '${{ steps.collect.outputs.count }}';
+            const topic = '${{ matrix.group.topic }}' || 'unknown';
+            const topicSlug = '${{ matrix.group.slug }}' || 'topic';
             const policyProfile = '${{ needs.resolve-command.outputs.policy_profile }}' || 'unknown';
             const requestedBy = '${{ needs.resolve-command.outputs.requested_by }}' || 'unknown';
             const forceAck = '${{ needs.resolve-command.outputs.force_ack }}' === 'true';
@@ -627,9 +719,9 @@ jobs:
             const prNumber = Number('${{ needs.resolve-command.outputs.pr_number }}');
             let body = '';
             if (opencodeOutcome !== 'success') {
-              body = `❌ \`/code_apply\` failed while running OpenCode for ${count} comment(s). Check workflow logs.`;
+              body = `❌ \`/code_apply\` failed for topic \`${topic}\` while running OpenCode for ${count} comment(s). Check workflow logs.`;
             } else if (changed) {
-              body = `✅ Applied fixes for ${count} comment(s) via \`/code_apply\` on isolated branch \`${applyBranch}\`.`;
+              body = `✅ Applied fixes for topic \`${topic}\` (${count} comment(s)) via \`/code_apply\` on isolated branch \`${applyBranch}\`.`;
               if (childPrUrl) {
                 body += `\n\nChild PR: ${childPrUrl}${childPrNumber ? ` (#${childPrNumber})` : ''}`;
               }
@@ -641,7 +733,7 @@ jobs:
                 body += `\nCommit: \`${commitSha}\``;
               }
             } else {
-              body = `ℹ️ \`/code_apply\` ran for ${count} comment(s), but no file changes were produced.`;
+              body = `ℹ️ \`/code_apply\` ran for topic \`${topic}\` (${count} comment(s)), but no file changes were produced.`;
             }
             if (hasRestricted && restrictedFiles.length > 0) {
               body += `\n\n⚠️ Workflow file edits were detected and intentionally skipped to avoid GitHub permission rejection:\n${restrictedFiles.map(f => `- \`${f}\``).join('\n')}`;
@@ -649,8 +741,9 @@ jobs:
             if (forceAck) {
               body += `\n\n⚠️ Force acknowledged by @${requestedBy} via \`/code_apply --all --force\`.`;
             }
+            body += `\n\nTopic bucket: \`${topic}\``;
             body += `\n\nPolicy profile: \`${policyProfile}\``;
-            body += `\n\n<!-- code_apply:managed result -->`;
+            body += `\n\n<!-- code_apply:managed result topic=${topicSlug} -->`;
             const created = await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -664,11 +757,13 @@ jobs:
         uses: actions/github-script@v7
         env:
           CURRENT_COMMENT_ID: ${{ steps.post_result.outputs.comment_id }}
+          TOPIC_SLUG: ${{ matrix.group.slug }}
         with:
           script: |
             const prNumber = Number('${{ needs.resolve-command.outputs.pr_number }}');
             if (!prNumber) return;
             const currentCommentId = Number(process.env.CURRENT_COMMENT_ID || '0');
+            const topicSlug = String(process.env.TOPIC_SLUG || 'topic');
             const comments = await github.paginate(github.rest.issues.listComments, {
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -679,7 +774,7 @@ jobs:
               c.user?.login === 'github-actions[bot]' &&
               c.id !== currentCommentId &&
               typeof c.body === 'string' &&
-              c.body.includes('<!-- code_apply:managed result -->')
+              c.body.includes(`<!-- code_apply:managed result topic=${topicSlug} -->`)
             );
             for (const c of stale) {
               await github.rest.issues.deleteComment({
