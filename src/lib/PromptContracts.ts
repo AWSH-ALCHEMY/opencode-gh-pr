@@ -3,11 +3,12 @@ import * as path from 'path';
 import { Logger } from './Logger';
 
 type PromptTask = 'ai_review' | 'code_apply' | 'hygiene_review';
+type RiskTier = 'low' | 'medium' | 'high' | 'critical';
 
 interface PromptPackConfig {
   id: PromptTask;
   version: string;
-  riskTier: string;
+  riskTier: RiskTier;
   system: string;
   template?: string;
   schema?: string;
@@ -22,7 +23,7 @@ interface PromptRegistry {
 export interface ResolvedPromptPack {
   id: PromptTask;
   version: string;
-  riskTier: string;
+  riskTier: RiskTier;
   systemPath: string;
   templatePath?: string;
   schemaPath?: string;
@@ -142,7 +143,12 @@ export class PromptContracts {
   }
 
   private resolvePath(relativePath: string): string {
-    return path.resolve(process.cwd(), relativePath);
+    const resolved = path.resolve(process.cwd(), relativePath);
+    const baseDir = path.resolve(process.cwd(), 'prompts');
+    if (!resolved.startsWith(baseDir + path.sep) && resolved !== baseDir) {
+      throw new Error(`Path '${relativePath}' resolves to '${resolved}' which is outside the prompts directory.`);
+    }
+    return resolved;
   }
 
   private assertFileExists(filePath: string, label: string): void {
