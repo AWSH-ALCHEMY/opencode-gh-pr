@@ -15,6 +15,18 @@ describe('OpenCodeOutput', () => {
     expect(entries[1]?.event['type']).toBe('text');
   });
 
+  it('ignores malformed brace-wrapped lines that fail JSON.parse', () => {
+    const output = [
+      '{"type":"text","part":{"text":"ok"}}',
+      '{invalid-json}',
+      '{"type":"step_finish"}',
+    ].join('\n');
+
+    const entries = parseJsonLines(output);
+    expect(entries).toHaveLength(2);
+    expect(entries.map((entry) => entry.event['type'])).toEqual(['text', 'step_finish']);
+  });
+
   it('extracts text payloads from parsed events', () => {
     const entries = parseJsonLines(
       [

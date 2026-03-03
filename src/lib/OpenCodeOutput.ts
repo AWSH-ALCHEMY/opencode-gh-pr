@@ -7,7 +7,8 @@ export function parseJsonLines(output: string): ParsedJsonLine[] {
   const parsed: ParsedJsonLine[] = [];
   for (const line of output.split('\n')) {
     const trimmed = line.trim();
-    if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) {
+    // Fast-path filter: only attempt JSON.parse on object-like lines.
+    if (!(trimmed.startsWith('{') && trimmed.endsWith('}'))) {
       continue;
     }
     try {
