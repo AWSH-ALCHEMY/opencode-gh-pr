@@ -26,6 +26,11 @@ Each pack defines:
   - log pack version and risk tier
 - Workflow `/code_apply` resolves its prompt path from `prompts/registry.json` via `jq`.
 
+## Hygiene Prompt Notes
+
+- `prompts/hygiene/v1/system.prompt.md` requires explicit findings for documentation professionalism issues.
+- Tone findings (dismissive/hostile/insulting language) should be reported separately from artifact/debug findings when both apply.
+
 ## Why
 
 - Removes large inline prompt blocks from code/workflows.
