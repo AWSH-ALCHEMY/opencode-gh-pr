@@ -3,6 +3,7 @@ import { Logger } from './Logger';
 import { RepoHygieneResult, RepoHygienePolicy } from './types';
 import { PromptContracts } from './PromptContracts';
 import { extractTextPayloads, parseJsonLines, parseJsonWithObjectFallback } from './OpenCodeOutput';
+import { getChangedFilesBetween, getDiffBetween } from './GitDiff';
 
 const SEVERITY_RANK: Record<'low' | 'medium' | 'high' | 'critical', number> = {
   low: 1,
@@ -83,30 +84,11 @@ export class RepoHygieneReviewer {
   }
 
   private async getChangedFiles(baseSha: string, headSha: string): Promise<string[]> {
-    let output = '';
-    await exec('git', ['diff', '--name-only', '--diff-filter=ACMR', baseSha, headSha], {
-      listeners: {
-        stdout: (data: Buffer) => {
-          output += data.toString();
-        },
-      },
-    });
-    return output
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
+    return getChangedFilesBetween(baseSha, headSha);
   }
 
   private async getDiff(baseSha: string, headSha: string): Promise<string> {
-    let output = '';
-    await exec('git', ['diff', '--unified=1', baseSha, headSha], {
-      listeners: {
-        stdout: (data: Buffer) => {
-          output += data.toString();
-        },
-      },
-    });
-    return output;
+    return getDiffBetween(baseSha, headSha, { unified: 1 });
   }
 
   private async callOpenCode(diff: string, changedFiles: string[]): Promise<string> {
