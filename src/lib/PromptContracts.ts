@@ -142,7 +142,11 @@ export class PromptContracts {
   }
 
   private resolvePath(relativePath: string): string {
-    return relativePath;
+    const normalizedPath = path.normalize(relativePath);
+    if (normalizedPath.includes('..')) {
+      throw new Error(`Invalid path: path traversal not allowed: ${relativePath}`);
+    }
+    return path.resolve(process.cwd(), normalizedPath);
   }
 
   private assertFileExists(filePath: string, label: string): void {
