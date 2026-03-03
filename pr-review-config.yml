@@ -46,9 +46,9 @@ complexity:
 # Review criteria
 criteria:
   approved_threshold: 7        # Minimum score for auto-approval
-  security_review_required: true  # Always review security-sensitive files
-  performance_check_enabled: true
-  documentation_check_enabled: true
+  securityAnalysis: true       # Enable security analysis
+  performanceCheck: true
+  documentationCheck: true
 
 # Team assignments (customize for your organization)
 reviewer_teams:
