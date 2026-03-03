@@ -4,6 +4,7 @@ import { Logger } from './Logger';
 import { PRAnalysisResult, AIReviewResult } from './types';
 import * as path from 'path';
 import { PromptContracts } from './PromptContracts';
+import { parseJsonLines, parseJsonWithObjectFallback } from './OpenCodeOutput';
 
 export class AIReviewer {
   private readonly logger: Logger;
@@ -76,51 +77,41 @@ export class AIReviewer {
       this.logger.warn(`OpenCode CLI stderr: ${errorOutput}`);
     }
 
-    const lines = output.split('\n').filter(line => line.trim().length > 0);
     let lastJson = '';
     let extractedReviewJson = '';
-    
-    for (const line of lines) {
-      const trimmedLine = line.trim();
-      if (!trimmedLine.startsWith('{') || !trimmedLine.endsWith('}')) {
-        continue;
+
+    for (const entry of parseJsonLines(output)) {
+      const parsed = entry.event;
+
+      if (
+        typeof parsed['summary'] === 'string' ||
+        Array.isArray(parsed['issues']) ||
+        typeof parsed['overallScore'] === 'number'
+      ) {
+        extractedReviewJson = entry.raw;
       }
 
-      try {
-        const parsed = JSON.parse(trimmedLine) as Record<string, unknown>;
-
-        if (
-          typeof parsed['summary'] === 'string' ||
-          Array.isArray(parsed['issues']) ||
-          typeof parsed['overallScore'] === 'number'
-        ) {
-          extractedReviewJson = trimmedLine;
-        }
-
-        if (parsed['type'] === 'text') {
-          const part = parsed['part'] as Record<string, unknown> | undefined;
-          const partText = part && typeof part['text'] === 'string' ? part['text'] : '';
-          if (partText) {
-            try {
-              const maybeReview = JSON.parse(partText) as Record<string, unknown>;
-              if (
-                typeof maybeReview['summary'] === 'string' ||
-                Array.isArray(maybeReview['issues']) ||
-                typeof maybeReview['overallScore'] === 'number'
-              ) {
-                extractedReviewJson = JSON.stringify(maybeReview);
-              }
-            } catch {
-              // Ignore non-JSON text payloads.
+      if (parsed['type'] === 'text') {
+        const part = parsed['part'] as Record<string, unknown> | undefined;
+        const partText = part && typeof part['text'] === 'string' ? part['text'] : '';
+        if (partText) {
+          try {
+            const maybeReview = parseJsonWithObjectFallback(partText) as Record<string, unknown>;
+            if (
+              typeof maybeReview['summary'] === 'string' ||
+              Array.isArray(maybeReview['issues']) ||
+              typeof maybeReview['overallScore'] === 'number'
+            ) {
+              extractedReviewJson = JSON.stringify(maybeReview);
             }
+          } catch {
+            // Ignore non-JSON text payloads.
           }
         }
+      }
 
-        if (parsed['type'] !== 'step_start' && parsed['type'] !== 'step_finish') {
-          lastJson = trimmedLine;
-        }
-      } catch {
-        continue;
+      if (parsed['type'] !== 'step_start' && parsed['type'] !== 'step_finish') {
+        lastJson = entry.raw;
       }
     }
 
