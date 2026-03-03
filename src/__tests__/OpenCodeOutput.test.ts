@@ -48,4 +48,19 @@ describe('OpenCodeOutput', () => {
     expect(parsed.decision).toBe('pass');
     expect(parsed.summary).toBe('ok');
   });
+
+  it('parses JSON wrapped in markdown code fences', () => {
+    const wrapped = [
+      '```json',
+      '{',
+      '  "summary":"ok",',
+      '  "overallScore": 8',
+      '}',
+      '```',
+    ].join('\n');
+
+    const parsed = parseJsonWithObjectFallback(wrapped) as { summary: string; overallScore: number };
+    expect(parsed.summary).toBe('ok');
+    expect(parsed.overallScore).toBe(8);
+  });
 });

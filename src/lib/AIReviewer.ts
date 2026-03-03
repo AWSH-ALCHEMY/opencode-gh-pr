@@ -4,7 +4,7 @@ import { Logger } from './Logger';
 import { PRAnalysisResult, AIReviewResult } from './types';
 import * as path from 'path';
 import { PromptContracts } from './PromptContracts';
-import { parseJsonLines } from './OpenCodeOutput';
+import { parseJsonLines, parseJsonWithObjectFallback } from './OpenCodeOutput';
 
 export class AIReviewer {
   private readonly logger: Logger;
@@ -96,7 +96,7 @@ export class AIReviewer {
         const partText = part && typeof part['text'] === 'string' ? part['text'] : '';
         if (partText) {
           try {
-            const maybeReview = JSON.parse(partText) as Record<string, unknown>;
+            const maybeReview = parseJsonWithObjectFallback(partText) as Record<string, unknown>;
             if (
               typeof maybeReview['summary'] === 'string' ||
               Array.isArray(maybeReview['issues']) ||
