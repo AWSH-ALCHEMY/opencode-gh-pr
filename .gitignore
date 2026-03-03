@@ -63,6 +63,7 @@ pids/
 .env
 # Local debugging artifacts
 artifacts/
+/.secrets
 
 # One-off local inspection archives
 logs.zip
