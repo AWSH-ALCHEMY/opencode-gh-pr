@@ -21,6 +21,9 @@ jobs:
       pr_number: ${{ steps.resolve.outputs.pr_number }}
       head_ref: ${{ steps.resolve.outputs.head_ref }}
       head_sha: ${{ steps.resolve.outputs.head_sha }}
+      base_ref: ${{ steps.resolve.outputs.base_ref }}
+      child_pr_base_ref: ${{ steps.resolve.outputs.child_pr_base_ref }}
+      child_pr_base_reason: ${{ steps.resolve.outputs.child_pr_base_reason }}
       is_fork: ${{ steps.resolve.outputs.is_fork }}
       target_ids_json: ${{ steps.resolve.outputs.target_ids_json }}
       target_groups_json: ${{ steps.resolve.outputs.target_groups_json }}
@@ -49,6 +52,9 @@ jobs:
             setOutput('pr_number', '');
             setOutput('head_ref', '');
             setOutput('head_sha', '');
+            setOutput('base_ref', '');
+            setOutput('child_pr_base_ref', '');
+            setOutput('child_pr_base_reason', '');
             setOutput('is_fork', '');
             setOutput('target_ids_json', '[]');
             setOutput('target_groups_json', '[]');
@@ -202,7 +208,26 @@ jobs:
             setOutput('pr_number', String(prNumber));
             setOutput('head_ref', pr.data.head.ref);
             setOutput('head_sha', pr.data.head.sha);
+            setOutput('base_ref', pr.data.base.ref);
             setOutput('is_fork', isFork ? 'true' : 'false');
+
+            let childPrBaseRef = pr.data.head.ref;
+            let childPrBaseReason = 'source-head';
+            try {
+              await github.rest.repos.getBranch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                branch: pr.data.head.ref,
+              });
+            } catch (error) {
+              childPrBaseRef = pr.data.base.ref;
+              childPrBaseReason = 'source-head-missing';
+              core.warning(
+                `Source head branch \`${pr.data.head.ref}\` is unavailable; child PR base will fallback to \`${pr.data.base.ref}\`.`
+              );
+            }
+            setOutput('child_pr_base_ref', childPrBaseRef);
+            setOutput('child_pr_base_reason', childPrBaseReason);
 
             if (isFork) {
               setOutput('feedback', 'Cannot apply changes automatically for forked PRs with default token permissions.');
@@ -603,7 +628,7 @@ jobs:
         with:
           script: |
             const prNumber = Number('${{ needs.resolve-command.outputs.pr_number }}');
-            const sourceHeadRef = '${{ needs.resolve-command.outputs.head_ref }}';
+            const childPrBaseRef = '${{ needs.resolve-command.outputs.child_pr_base_ref }}';
             const applyBranch = '${{ steps.branch.outputs.name }}';
             const count = '${{ steps.collect.outputs.count }}';
             const topic = '${{ matrix.group.topic }}';
@@ -625,16 +650,23 @@ jobs:
               'This PR contains AI-applied changes on an isolated branch.',
             ].join('\n');
 
-            const created = await github.rest.pulls.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title,
-              head: applyBranch,
-              base: sourceHeadRef,
-              body,
-            });
-            core.setOutput('number', String(created.data.number));
-            core.setOutput('url', created.data.html_url);
+            core.setOutput('error', '');
+            try {
+              const created = await github.rest.pulls.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                head: applyBranch,
+                base: childPrBaseRef,
+                body,
+              });
+              core.setOutput('number', String(created.data.number));
+              core.setOutput('url', created.data.html_url);
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              core.setOutput('error', message);
+              throw error;
+            }
 
       - name: "Resolve targeted AI review threads"
         if: steps.opencode.outcome == 'success' && steps.commit.outputs.changed == 'true'
@@ -700,8 +732,10 @@ jobs:
             const childPrUrl = '${{ steps.child_pr.outputs.url }}' || '';
             const childPrNumber = '${{ steps.child_pr.outputs.number }}' || '';
             const childPrOutcome = '${{ steps.child_pr.outcome }}';
+            const childPrError = ${{ toJSON(steps.child_pr.outputs.error) }} || '';
             const applyBranch = '${{ steps.branch.outputs.name }}' || '';
-            const baseRef = '${{ needs.resolve-command.outputs.head_ref }}' || '';
+            const childPrBaseRef = '${{ needs.resolve-command.outputs.child_pr_base_ref }}' || '';
+            const childPrBaseReason = '${{ needs.resolve-command.outputs.child_pr_base_reason }}' || 'source-head';
             const commitSha = '${{ steps.commit.outputs.commit_sha }}' || '';
             const hasRestricted = String('${{ steps.restricted.outputs.has_restricted }}').trim().toLowerCase() === 'true';
             const restrictedFilesOutput = ${{ toJSON(steps.restricted.outputs.restricted_files_json) }};
@@ -726,8 +760,11 @@ jobs:
                 body += `\n\nChild PR: ${childPrUrl}${childPrNumber ? ` (#${childPrNumber})` : ''}`;
               }
               if (childPrOutcome !== 'success') {
-                const compareUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/compare/${encodeURIComponent(baseRef)}...${encodeURIComponent(applyBranch)}?expand=1`;
-                body += `\n\n⚠️ Child PR creation was blocked by repository settings or token policy. Compare branch manually: ${compareUrl}`;
+                const compareUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/compare/${encodeURIComponent(childPrBaseRef)}...${encodeURIComponent(applyBranch)}?expand=1`;
+                body += `\n\n⚠️ Child PR creation failed. Compare branch manually: ${compareUrl}`;
+                if (childPrError) {
+                  body += `\nFailure reason: \`${childPrError}\``;
+                }
               }
               if (commitSha) {
                 body += `\nCommit: \`${commitSha}\``;
@@ -740,6 +777,9 @@ jobs:
             }
             if (forceAck) {
               body += `\n\n⚠️ Force acknowledged by @${requestedBy} via \`/code_apply --all --force\`.`;
+            }
+            if (childPrBaseReason === 'source-head-missing') {
+              body += `\n\nℹ️ Source PR head branch was unavailable, so child PR base fallback was set to \`${childPrBaseRef}\`.`;
             }
             body += `\n\nTopic bucket: \`${topic}\``;
             body += `\n\nPolicy profile: \`${policyProfile}\``;
