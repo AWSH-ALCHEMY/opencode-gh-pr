@@ -50,3 +50,15 @@ export function parseJsonWithObjectFallback(raw: string): unknown {
     throw new Error('No parseable JSON object in AI output.');
   }
 }
+
+export function isAIReviewPayload(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const parsed = value as Record<string, unknown>;
+  return (
+    typeof parsed['summary'] === 'string' ||
+    Array.isArray(parsed['issues']) ||
+    typeof parsed['overallScore'] === 'number'
+  );
+}

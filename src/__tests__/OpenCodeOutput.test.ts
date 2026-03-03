@@ -1,4 +1,4 @@
-import { extractTextPayloads, parseJsonLines, parseJsonWithObjectFallback } from '../lib/OpenCodeOutput';
+import { extractTextPayloads, isAIReviewPayload, parseJsonLines, parseJsonWithObjectFallback } from '../lib/OpenCodeOutput';
 
 describe('OpenCodeOutput', () => {
   it('parses valid JSON lines and ignores non-JSON lines', () => {
@@ -62,5 +62,17 @@ describe('OpenCodeOutput', () => {
     const parsed = parseJsonWithObjectFallback(wrapped) as { summary: string; overallScore: number };
     expect(parsed.summary).toBe('ok');
     expect(parsed.overallScore).toBe(8);
+  });
+
+  it('identifies ai review payload objects', () => {
+    expect(isAIReviewPayload({ summary: 'ok' })).toBe(true);
+    expect(isAIReviewPayload({ issues: [] })).toBe(true);
+    expect(isAIReviewPayload({ overallScore: 9 })).toBe(true);
+  });
+
+  it('rejects non-review objects', () => {
+    expect(isAIReviewPayload({ type: 'text' })).toBe(false);
+    expect(isAIReviewPayload(null)).toBe(false);
+    expect(isAIReviewPayload('summary')).toBe(false);
   });
 });

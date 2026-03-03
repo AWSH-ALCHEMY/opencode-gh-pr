@@ -2,7 +2,7 @@
 import { Logger } from './Logger';
 import { PRAnalysisResult, AIReviewResult } from './types';
 import { PromptContracts } from './PromptContracts';
-import { parseJsonLines, parseJsonWithObjectFallback } from './OpenCodeOutput';
+import { isAIReviewPayload, parseJsonLines, parseJsonWithObjectFallback } from './OpenCodeOutput';
 import { resolveChangedFile } from './ChangedFileResolver';
 import { getHeadDiff } from './GitDiff';
 import { runOpenCodeJsonPrompt } from './OpenCodeRunner';
@@ -60,11 +60,7 @@ export class AIReviewer {
     for (const entry of parseJsonLines(output)) {
       const parsed = entry.event;
 
-      if (
-        typeof parsed['summary'] === 'string' ||
-        Array.isArray(parsed['issues']) ||
-        typeof parsed['overallScore'] === 'number'
-      ) {
+      if (isAIReviewPayload(parsed)) {
         extractedReviewJson = entry.raw;
       }
 
@@ -74,11 +70,7 @@ export class AIReviewer {
         if (partText) {
           try {
             const maybeReview = parseJsonWithObjectFallback(partText) as Record<string, unknown>;
-            if (
-              typeof maybeReview['summary'] === 'string' ||
-              Array.isArray(maybeReview['issues']) ||
-              typeof maybeReview['overallScore'] === 'number'
-            ) {
+            if (isAIReviewPayload(maybeReview)) {
               extractedReviewJson = JSON.stringify(maybeReview);
             }
           } catch {
@@ -109,11 +101,7 @@ export class AIReviewer {
 
     try {
       const parsed = JSON.parse(lastJson) as Record<string, unknown>;
-      if (
-        typeof parsed['summary'] !== 'string' &&
-        !Array.isArray(parsed['issues']) &&
-        typeof parsed['overallScore'] !== 'number'
-      ) {
+      if (!isAIReviewPayload(parsed)) {
         throw new Error('Parsed JSON is not a review payload');
       }
     } catch {
