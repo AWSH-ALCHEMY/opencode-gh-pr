@@ -1,8 +1,0 @@
-PR Analysis:
-- Files changed: 1
-- Lines: +1 -1
-- Complexity: low
-- Security risks: No
-
-Please provide a review of the following code changes:
-README.md
