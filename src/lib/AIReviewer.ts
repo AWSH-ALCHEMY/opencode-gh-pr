@@ -10,10 +10,10 @@ export class AIReviewer {
   private readonly baseSha: string | undefined;
   private readonly prompts: PromptContracts;
 
-  constructor(options: { logger: Logger; baseSha?: string }) {
+  constructor(options: { logger: Logger; baseSha?: string; prompts?: PromptContracts }) {
     this.logger = options.logger;
     this.baseSha = options.baseSha;
-    this.prompts = new PromptContracts({ logger: this.logger });
+    this.prompts = options.prompts || new PromptContracts({ logger: this.logger });
   }
 
   public async review(prAnalysis: PRAnalysisResult, commitSha: string): Promise<AIReviewResult | null> {

@@ -15,10 +15,10 @@ export class RepoHygieneReviewer {
   private readonly policy: RepoHygienePolicy;
   private readonly prompts: PromptContracts;
 
-  constructor(options: { logger: Logger; policy: RepoHygienePolicy }) {
+  constructor(options: { logger: Logger; policy: RepoHygienePolicy; prompts?: PromptContracts }) {
     this.logger = options.logger;
     this.policy = options.policy;
-    this.prompts = new PromptContracts({ logger: this.logger });
+    this.prompts = options.prompts || new PromptContracts({ logger: this.logger });
   }
 
   public async run(baseSha: string, headSha: string): Promise<{

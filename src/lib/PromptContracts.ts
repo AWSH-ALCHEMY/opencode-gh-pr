@@ -2,12 +2,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Logger } from './Logger';
 
+type RiskTier = 'low' | 'medium' | 'high' | 'critical';
+
 type PromptTask = 'ai_review' | 'code_apply' | 'hygiene_review';
 
 interface PromptPackConfig {
   id: PromptTask;
   version: string;
-  riskTier: string;
+  riskTier: RiskTier;
   system: string;
   template?: string;
   schema?: string;
@@ -22,7 +24,7 @@ interface PromptRegistry {
 export interface ResolvedPromptPack {
   id: PromptTask;
   version: string;
-  riskTier: string;
+  riskTier: RiskTier;
   systemPath: string;
   templatePath?: string;
   schemaPath?: string;
@@ -32,10 +34,12 @@ export class PromptContracts {
   private readonly logger: Logger;
   private readonly registryPath: string;
   private readonly registry: PromptRegistry;
+  private readonly baseDir: string;
 
   constructor(options: { logger: Logger; registryPath?: string }) {
     this.logger = options.logger;
-    this.registryPath = options.registryPath || path.resolve(process.cwd(), 'prompts/registry.json');
+    this.baseDir = path.resolve(__dirname, '..', '..', 'prompts');
+    this.registryPath = options.registryPath || path.resolve(this.baseDir, 'registry.json');
     this.registry = this.loadRegistry();
   }
 
@@ -91,9 +95,9 @@ export class PromptContracts {
       task,
       version: pack.version,
       riskTier: pack.riskTier,
-      systemPath: path.relative(process.cwd(), pack.systemPath),
-      templatePath: pack.templatePath ? path.relative(process.cwd(), pack.templatePath) : '',
-      schemaPath: pack.schemaPath ? path.relative(process.cwd(), pack.schemaPath) : '',
+      systemPath: path.relative(this.baseDir, pack.systemPath),
+      templatePath: pack.templatePath ? path.relative(this.baseDir, pack.templatePath) : '',
+      schemaPath: pack.schemaPath ? path.relative(this.baseDir, pack.schemaPath) : '',
     });
 
     return { text: fullPrompt, pack };
@@ -142,7 +146,15 @@ export class PromptContracts {
   }
 
   private resolvePath(relativePath: string): string {
-    return path.resolve(process.cwd(), relativePath);
+    const resolved = path.resolve(this.baseDir, relativePath);
+    const normalizedBase = path.normalize(this.baseDir);
+    const normalizedResolved = path.normalize(resolved);
+    
+    if (!normalizedResolved.startsWith(normalizedBase + path.sep) && normalizedResolved !== normalizedBase) {
+      throw new Error(`Path traversal detected: ${relativePath} resolves outside prompts directory`);
+    }
+    
+    return resolved;
   }
 
   private assertFileExists(filePath: string, label: string): void {
