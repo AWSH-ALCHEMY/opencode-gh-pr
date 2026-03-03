@@ -36,6 +36,22 @@ Change `/code_apply` to use an isolated bot branch and open a separate PR for AI
 
 Command parsing stays mostly the same, but apply target becomes a new bot branch.
 
+### Trigger Semantics
+
+`code-apply.yml` is triggered by the `issue_comment` event, so a workflow run may start for any new PR comment.
+
+Command handling only activates when all of the following are true:
+
+- Comment first line exactly matches `/code_apply ...`
+- The entire comment body is that single command line (no leading narrative text and no extra lines)
+- Comment author is not a bot
+
+Operational implications:
+
+- A narrative sentence that merely mentions `/code_apply` will not run command logic.
+- Bot-authored comments containing `/code_apply` are ignored.
+- A standalone command such as `/code_apply --all --force` is accepted and then normal policy checks apply (for example required label `ai-apply-approved`).
+
 ### Branch and PR model
 
 For a source PR `#123` on head branch `feature-x`:
