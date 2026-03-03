@@ -6,4 +6,4 @@ Requirements:
 - Keep changes minimal and coherent.
 - After edits, run `npm run build` and fix any build errors caused by your changes.
 - Do not change git history and do not add generated summaries to source files.
-Return a concise summary of what you changed.
+Respond with a concise summary.
