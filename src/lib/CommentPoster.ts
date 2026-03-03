@@ -3,7 +3,7 @@ import { ActionConfig } from './ActionConfig';
 import { Logger } from './Logger';
 import { AIReviewResult, ReviewResult } from './types';
 import { SecurityScanResult } from './SecurityScanner';
-import * as path from 'path';
+import { resolveChangedFile } from './ChangedFileResolver';
 
 const MAX_INLINE_COMMENTS = 30;
 const MAX_ANNOTATIONS = 50;
@@ -179,23 +179,7 @@ export class CommentPoster {
   }
 
   private resolveIssuePath(rawPath: string, changedFiles: string[]): string | null {
-    const normalized = rawPath.replace(/^a\//, '').replace(/^b\//, '').trim();
-    if (!normalized) {
-      return null;
-    }
-
-    if (changedFiles.includes(normalized)) {
-      return normalized;
-    }
-
-    const baseName = path.basename(normalized);
-    const byBaseName = changedFiles.filter(f => path.basename(f) === baseName);
-    if (byBaseName.length === 1) {
-      return byBaseName[0] ?? null;
-    }
-
-    const byContains = changedFiles.find(f => f.endsWith(normalized) || normalized.endsWith(f));
-    return byContains ?? null;
+    return resolveChangedFile(rawPath, changedFiles);
   }
 
   private findNearestLine(target: number, candidates: number[]): number {

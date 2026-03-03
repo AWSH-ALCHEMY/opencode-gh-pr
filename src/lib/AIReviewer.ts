@@ -2,9 +2,9 @@
 import { exec } from '@actions/exec';
 import { Logger } from './Logger';
 import { PRAnalysisResult, AIReviewResult } from './types';
-import * as path from 'path';
 import { PromptContracts } from './PromptContracts';
 import { parseJsonLines, parseJsonWithObjectFallback } from './OpenCodeOutput';
+import { resolveChangedFile } from './ChangedFileResolver';
 
 export class AIReviewer {
   private readonly logger: Logger;
@@ -253,26 +253,9 @@ export class AIReviewer {
   }
 
   private resolveIssueFile(rawFile: string, changedFiles: string[]): string {
-    const cleaned = rawFile.replace(/^a\//, '').replace(/^b\//, '').trim();
-    if (!cleaned || cleaned === 'N/A') {
+    if (rawFile === 'N/A') {
       return 'N/A';
     }
-
-    if (changedFiles.includes(cleaned)) {
-      return cleaned;
-    }
-
-    const cleanedBase = path.basename(cleaned);
-    const baseMatches = changedFiles.filter(f => path.basename(f) === cleanedBase);
-    if (baseMatches.length === 1) {
-      return baseMatches[0] ?? 'N/A';
-    }
-
-    const containsMatch = changedFiles.find(f => f.endsWith(cleaned) || cleaned.endsWith(f));
-    if (containsMatch) {
-      return containsMatch;
-    }
-
-    return 'N/A';
+    return resolveChangedFile(rawFile, changedFiles) ?? 'N/A';
   }
 }
