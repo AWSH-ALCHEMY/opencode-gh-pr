@@ -142,7 +142,7 @@ export class PromptContracts {
   }
 
   private resolvePath(relativePath: string): string {
-    return path.resolve(process.cwd(), relativePath);
+    return relativePath;
   }
 
   private assertFileExists(filePath: string, label: string): void {
