@@ -67,7 +67,7 @@ export class ActionConfig {
       maxTokens: 2000,
       timeout: 30000,
       approvedThreshold: 7,
-      securityAnalysis: false,
+      securityAnalysis: true,
       performanceCheck: true,
       documentationCheck: true,
       securityPatterns: [
