@@ -572,8 +572,27 @@ jobs:
         continue-on-error: true
         timeout-minutes: 15
         run: |
+          set -euo pipefail
           cat "${{ steps.prompt_contract.outputs.prompt_file }}" > /tmp/code_apply_prompt.txt
-          timeout 900 opencode run - --format json < /tmp/code_apply_prompt.txt
+          : > /tmp/code_apply_opencode.log
+          set +e
+          timeout --signal=TERM --kill-after=30s 900s opencode run - --format json < /tmp/code_apply_prompt.txt 2>&1 | tee /tmp/code_apply_opencode.log
+          rc=${PIPESTATUS[0]}
+          set -e
+
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+            echo "timed_out=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "timed_out=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ "$rc" -ne 0 ]; then
+            echo "OpenCode apply failed with exit code $rc"
+            echo "Last 80 log lines:"
+            tail -n 80 /tmp/code_apply_opencode.log || true
+            exit "$rc"
+          fi
 
       - name: "Filter restricted workflow edits"
         id: restricted
@@ -738,6 +757,8 @@ jobs:
         with:
           script: |
             const opencodeOutcome = '${{ steps.opencode.outcome }}';
+            const opencodeExitCode = '${{ steps.opencode.outputs.exit_code }}' || '';
+            const opencodeTimedOut = '${{ steps.opencode.outputs.timed_out }}' === 'true';
             const changed = '${{ steps.commit.outputs.changed }}' === 'true';
             const count = '${{ steps.collect.outputs.count }}';
             const topic = '${{ matrix.group.topic }}' || 'unknown';
@@ -770,6 +791,11 @@ jobs:
             let body = '';
             if (opencodeOutcome !== 'success') {
               body = `❌ \`/code_apply\` failed for topic \`${topic}\` while running OpenCode for ${count} comment(s). Check workflow logs.`;
+              if (opencodeTimedOut) {
+                body += `\n\nTimeout: OpenCode exceeded 900 seconds and was force-killed.`;
+              } else if (opencodeExitCode) {
+                body += `\n\nExit code: \`${opencodeExitCode}\``;
+              }
             } else if (changed) {
               body = `✅ Applied fixes for topic \`${topic}\` (${count} comment(s)) via \`/code_apply\` on isolated branch \`${applyBranch}\`.`;
               if (childPrUrl) {
