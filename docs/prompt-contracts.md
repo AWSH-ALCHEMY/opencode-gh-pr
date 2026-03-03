@@ -12,8 +12,8 @@ This repository uses prompt contracts to keep AI interactions versioned and audi
 
 Each pack defines:
 
-- `system` prompt
-- optional `template` prompt
+- `system` prompt (`*.prompt.md`)
+- optional `template` prompt (`*.prompt.md`)
 - optional `schema` definition
 - pack metadata (`id`, `version`, `riskTier`)
 
