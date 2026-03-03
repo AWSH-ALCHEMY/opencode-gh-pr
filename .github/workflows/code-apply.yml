@@ -72,6 +72,8 @@ jobs:
               profiles: {
                 balanced: {
                   allowedAuthorAssociations: ['OWNER', 'MEMBER', 'COLLABORATOR'],
+                  allowedTargetAuthorAssociations: ['OWNER', 'MEMBER', 'COLLABORATOR'],
+                  allowAiAuthoredTargets: true,
                   requireLabel: '',
                   allowAll: true,
                   maxCommentsPerRun: 50,
@@ -93,6 +95,19 @@ jobs:
                     .filter((value) => value.length > 0)
                 )
               );
+              const allowedTargetRaw = Array.isArray(raw?.allowedTargetAuthorAssociations)
+                ? raw.allowedTargetAuthorAssociations
+                : defaultPolicy.profiles.balanced.allowedTargetAuthorAssociations;
+              const allowedTargetAuthorAssociations = Array.from(
+                new Set(
+                  allowedTargetRaw
+                    .map((value) => String(value).trim().toUpperCase())
+                    .filter((value) => value.length > 0)
+                )
+              );
+              const allowAiAuthoredTargets = typeof raw?.allowAiAuthoredTargets === 'boolean'
+                ? raw.allowAiAuthoredTargets
+                : defaultPolicy.profiles.balanced.allowAiAuthoredTargets;
               const requireLabel = typeof raw?.requireLabel === 'string' ? raw.requireLabel.trim() : '';
               const allowAll = typeof raw?.allowAll === 'boolean' ? raw.allowAll : defaultPolicy.profiles.balanced.allowAll;
               const maxCommentsPerRunRaw = Number(raw?.maxCommentsPerRun);
@@ -104,6 +119,8 @@ jobs:
                 : defaultPolicy.profiles.balanced.requireForceForAll;
               return {
                 allowedAuthorAssociations,
+                allowedTargetAuthorAssociations,
+                allowAiAuthoredTargets,
                 requireLabel,
                 allowAll,
                 maxCommentsPerRun,
@@ -216,6 +233,17 @@ jobs:
             const targetIds = [];
             let usedForceAll = false;
 
+            const isAllowedTargetComment = (reviewComment) => {
+              const login = reviewComment?.user?.login || '';
+              const assocRaw = reviewComment?.author_association || 'NONE';
+              const assoc = String(assocRaw).toUpperCase();
+              const isAi = aiLogins.has(login);
+              if (isAi && profile.allowAiAuthoredTargets) {
+                return true;
+              }
+              return profile.allowedTargetAuthorAssociations.includes(assoc);
+            };
+
             const validateCommentId = async (id) => {
               const c = await github.rest.pulls.getReviewComment({
                 owner: context.repo.owner,
@@ -227,8 +255,12 @@ jobs:
               if (!prUrl.endsWith(expectedSuffix)) {
                 throw new Error(`Comment ${id} is not on PR #${prNumber}.`);
               }
-              if (!aiLogins.has(c.data.user?.login || '')) {
-                throw new Error(`Comment ${id} is not an AI review comment.`);
+              if (!isAllowedTargetComment(c.data)) {
+                const login = c.data.user?.login || 'unknown';
+                const assoc = String(c.data.author_association || 'NONE').toUpperCase();
+                throw new Error(
+                  `Comment ${id} by @${login} (${assoc}) is not allowed by policy profile \`${profileName}\`.`
+                );
               }
               return id;
             };
@@ -278,10 +310,10 @@ jobs:
                 }
               );
               const filtered = allReviewComments
-                .filter(c => aiLogins.has(c.user?.login || ''))
+                .filter(c => isAllowedTargetComment(c))
                 .map(c => c.id);
               if (filtered.length === 0) {
-                setOutput('feedback', 'No AI inline review comments found to apply.');
+                setOutput('feedback', `No eligible inline review comments found for policy profile \`${profileName}\`.`);
                 return;
               }
               targetIds.push(...filtered);

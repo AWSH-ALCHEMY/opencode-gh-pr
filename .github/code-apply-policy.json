@@ -4,6 +4,8 @@
   "profiles": {
     "strict": {
       "allowedAuthorAssociations": ["OWNER"],
+      "allowedTargetAuthorAssociations": ["OWNER"],
+      "allowAiAuthoredTargets": true,
       "requireLabel": "ai-apply-approved",
       "allowAll": false,
       "maxCommentsPerRun": 5,
@@ -11,6 +13,8 @@
     },
     "balanced": {
       "allowedAuthorAssociations": ["OWNER", "MEMBER", "COLLABORATOR"],
+      "allowedTargetAuthorAssociations": ["OWNER", "MEMBER", "COLLABORATOR"],
+      "allowAiAuthoredTargets": true,
       "requireLabel": "ai-apply-approved",
       "allowAll": true,
       "maxCommentsPerRun": 30,
@@ -18,6 +22,8 @@
     },
     "open": {
       "allowedAuthorAssociations": ["OWNER", "MEMBER", "COLLABORATOR", "CONTRIBUTOR"],
+      "allowedTargetAuthorAssociations": ["OWNER", "MEMBER", "COLLABORATOR", "CONTRIBUTOR"],
+      "allowAiAuthoredTargets": true,
       "requireLabel": "",
       "allowAll": true,
       "maxCommentsPerRun": 50,

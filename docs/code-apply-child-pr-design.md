@@ -94,6 +94,8 @@ Policy is defined in `.github/code-apply-policy.json` with:
 Supported profile fields:
 
 - `allowedAuthorAssociations` (array): allowed values include `OWNER`, `MEMBER`, `COLLABORATOR`, `CONTRIBUTOR`
+- `allowedTargetAuthorAssociations` (array): allowed author associations for targeted inline review comments (human-authored review comments)
+- `allowAiAuthoredTargets` (boolean): whether bot-authored inline review comments are eligible targets
 - `requireLabel` (string): label that must exist on source PR to allow `/code_apply`
 - `allowAll` (boolean): whether `/code_apply --all` is allowed
 - `maxCommentsPerRun` (number): hard cap on target comments per command
