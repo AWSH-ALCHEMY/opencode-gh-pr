@@ -32,6 +32,7 @@ Narrative mentions (for example, "we can use /code_apply later") are ignored.
 
 - [Code Apply Child PR Design](docs/code-apply-child-pr-design.md)
 - [Prompt Contracts](docs/prompt-contracts.md)
+- [Hygiene Adversarial Playbook](docs/hygiene-adversarial-playbook.md)
 
 ## Local Dev
 
@@ -45,4 +46,10 @@ For full validation:
 
 ```bash
 npm run all
+```
+
+Adversarial hygiene smoke runner:
+
+```bash
+scripts/hygiene_smoke.sh dual-signal
 ```
