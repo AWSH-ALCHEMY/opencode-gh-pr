@@ -24,7 +24,13 @@ Each pack defines:
   - verify referenced files exist
   - render template variables
   - log pack version and risk tier
-- Workflow `/code_apply` resolves its prompt path from `prompts/registry.json` via `jq`.
+- The prompt registry path can be overridden via:
+  - action input `prompt-registry-path`
+  - workflow input `prompt_registry_path` for `code-apply.yml` and `repo-hygiene.yml`
+  - environment variable `PROMPT_REGISTRY_PATH` for lower-level runtime entrypoints
+- Workflow `/code_apply` resolves its prompt path from the configured prompt registry via `jq`.
+- Workflow `/code_apply` policy loading can be overridden with the `policy_path` workflow input.
+- Repo hygiene policy loading can be overridden with the `policy_path` workflow input.
 
 ## Hygiene Prompt Notes
 

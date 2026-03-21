@@ -23,6 +23,7 @@ async function run(): Promise<void> {
     
     // Validate required inputs
     const githubToken = core.getInput('github-token', { required: true });
+    const promptRegistryPath = core.getInput('prompt-registry-path');
     
     // Initialize GitHub client
     const octokit = new Octokit({ auth: githubToken });
@@ -37,12 +38,14 @@ async function run(): Promise<void> {
     logger.info(`Processing PR #${pr.number}: ${pr['title']}`);
     
     // Initialize and run the secure review
-    const reviewer = new SecurePRReview({
+    const reviewerOptions = {
       octokit,
       config,
       logger,
       repo: context.repo,
-    });
+      ...(promptRegistryPath ? { promptRegistryPath } : {}),
+    };
+    const reviewer = new SecurePRReview(reviewerOptions);
     
     const result = await reviewer.execute();
     
@@ -69,7 +72,7 @@ async function run(): Promise<void> {
 
 // Execute the action
 if (require.main === module) {
-  run();
+  void run();
 }
 
 export { run };

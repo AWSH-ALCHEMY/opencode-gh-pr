@@ -2,6 +2,7 @@ import * as core from '@actions/core';
 import { z } from 'zod';
 import * as yaml from 'js-yaml';
 import * as fs from 'fs';
+import { resolveWorkspacePath } from './WorkspacePath';
 
 
 /**
@@ -100,8 +101,11 @@ export class ActionConfig {
       
       // Load from config file if specified
       const configFile = core.getInput('config-file');
-      if (configFile && fs.existsSync(configFile)) {
-        this.loadFromFile(configFile);
+      if (configFile) {
+        const resolvedConfigFile = resolveWorkspacePath(configFile);
+        if (fs.existsSync(resolvedConfigFile)) {
+          this.loadFromFile(resolvedConfigFile);
+        }
       }
       
       // Validate final configuration
