@@ -46,6 +46,10 @@ on:
         description: "Path to the generated JSON report"
         value: ${{ jobs.repo_sweep.outputs.report_file }}
 
+concurrency:
+  group: repo-sweep-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
