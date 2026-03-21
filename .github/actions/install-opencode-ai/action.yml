@@ -1,0 +1,15 @@
+name: "Install OpenCode AI"
+description: "Install the pinned OpenCode CLI version used by this repository"
+
+inputs:
+  version:
+    description: "OpenCode AI version to install"
+    required: false
+    default: "1.2.27"
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Install OpenCode AI"
+      shell: bash
+      run: npm install -g opencode-ai@${{ inputs.version }}

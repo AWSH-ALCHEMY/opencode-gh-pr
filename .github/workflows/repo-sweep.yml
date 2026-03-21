@@ -66,10 +66,10 @@ jobs:
       - name: "Checkout"
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
       - name: "Install OpenCode CLI"
-        run: npm install -g opencode-ai@1.2.27
+        uses: ./.github/actions/install-opencode-ai
 
       - name: "Resolve repo sweep prompt pack"
         id: prompt_contract
@@ -141,7 +141,6 @@ jobs:
 
       - name: "Run repo sweep"
         id: sweep
-        continue-on-error: true
         timeout-minutes: 20
         shell: bash
         run: |
@@ -149,115 +148,22 @@ jobs:
           cat "${{ steps.prompt_contract.outputs.prompt_file }}" > /tmp/repo_sweep_prompt.txt
           : > /tmp/repo_sweep_opencode.log
           set +e
-          timeout --signal=TERM --kill-after=30s 1200s opencode run - --format json < /tmp/repo_sweep_prompt.txt 2>&1 | tee /tmp/repo_sweep_opencode.log
+          opencode run - --format json < /tmp/repo_sweep_prompt.txt 2>&1 | tee /tmp/repo_sweep_opencode.log
           rc=${PIPESTATUS[0]}
           echo "exit_code=${rc}" >> "$GITHUB_OUTPUT"
           echo "log_path=/tmp/repo_sweep_opencode.log" >> "$GITHUB_OUTPUT"
-          exit 0
+          exit "${rc}"
 
       - name: "Normalize report"
         id: normalize
+        if: always()
+        timeout-minutes: 5
         shell: bash
         env:
           REPO_SWEEP_REPORT_FILE: ${{ steps.prompt_contract.outputs.report_file }}
           REPO_SWEEP_LOG_PATH: ${{ steps.sweep.outputs.log_path }}
           REPO_SWEEP_EXIT_CODE: ${{ steps.sweep.outputs.exit_code }}
-        run: |
-          set -euo pipefail
-          node <<'NODE'
-          const fs = require('fs');
-          const path = require('path');
-
-          const reportFile = process.env.REPO_SWEEP_REPORT_FILE;
-          const logPath = process.env.REPO_SWEEP_LOG_PATH;
-          const exitCode = Number(process.env.REPO_SWEEP_EXIT_CODE || '0');
-          const summaryPath = process.env.GITHUB_STEP_SUMMARY || '';
-          const outputPath = process.env.GITHUB_OUTPUT || '';
-
-          const setOutput = (name, value) => {
-            if (!outputPath) {
-              return;
-            }
-            fs.appendFileSync(outputPath, `${name}=${String(value)}\n`, 'utf8');
-          };
-
-          const raw = fs.readFileSync(logPath, 'utf8');
-          let textPayload = '';
-          let lastJson = '';
-
-          for (const line of raw.split(/\r?\n/)) {
-            const trimmed = line.trim();
-            if (!(trimmed.startsWith('{') && trimmed.endsWith('}'))) {
-              continue;
-            }
-            try {
-              const parsed = JSON.parse(trimmed);
-              lastJson = trimmed;
-              if (parsed && parsed.type === 'text') {
-                const part = parsed.part || {};
-                const text = typeof part.text === 'string' ? part.text : '';
-                if (text) {
-                  textPayload = text;
-                }
-              }
-            } catch {
-              continue;
-            }
-          }
-
-          const candidate = textPayload || lastJson;
-          if (!candidate) {
-            throw new Error('No parseable JSON output was produced by OpenCode.');
-          }
-
-          let report;
-          try {
-            report = JSON.parse(candidate);
-          } catch {
-            const start = candidate.indexOf('{');
-            const end = candidate.lastIndexOf('}');
-            if (start < 0 || end <= start) {
-              throw new Error('OpenCode output did not contain a parseable JSON report.');
-            }
-            report = JSON.parse(candidate.slice(start, end + 1));
-          }
-
-          const normalized = {
-            status: typeof report.status === 'string' ? report.status : 'warn',
-            summary: typeof report.summary === 'string' ? report.summary : 'Repository sweep completed.',
-            overallScore: typeof report.overallScore === 'number' ? report.overallScore : 0,
-            findings: Array.isArray(report.findings) ? report.findings : [],
-            recommendations: Array.isArray(report.recommendations) ? report.recommendations : [],
-            exitCode,
-            generatedAt: new Date().toISOString(),
-          };
-
-          fs.mkdirSync(path.dirname(reportFile), { recursive: true });
-          fs.writeFileSync(reportFile, `${JSON.stringify(normalized, null, 2)}\n`, 'utf8');
-
-          if (summaryPath) {
-            const lines = [];
-            lines.push('### Repository Sweep');
-            lines.push('');
-            lines.push(`- Status: \`${normalized.status}\``);
-            lines.push(`- Score: \`${normalized.overallScore}\``);
-            lines.push(`- Findings: \`${normalized.findings.length}\``);
-            lines.push(`- Summary: ${normalized.summary}`);
-            if (normalized.recommendations.length > 0) {
-              lines.push('');
-              lines.push('#### Recommendations');
-              for (const item of normalized.recommendations) {
-                lines.push(`- ${item}`);
-              }
-            }
-            fs.appendFileSync(summaryPath, `${lines.join('\n')}\n`);
-          }
-
-          setOutput('status', normalized.status);
-          setOutput('score', String(normalized.overallScore));
-          setOutput('findings_count', String(normalized.findings.length));
-          setOutput('report_file', reportFile);
-          NODE
+        run: node scripts/normalize-repo-sweep-report.cjs
 
       - name: "Upload sweep report"
         if: steps.normalize.outcome == 'success'
