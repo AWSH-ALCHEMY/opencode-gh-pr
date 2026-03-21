@@ -39,6 +39,7 @@ export class PromptContracts {
     this.logger = options.logger;
     this.workspaceRoot = options.workspaceRoot ?? getWorkspaceRoot();
     const envRegistryPath = process.env['PROMPT_REGISTRY_PATH']?.trim();
+    // Keep the explicit caller override first; env is a fallback for the lower-level runtime entrypoints.
     const configuredRegistryPath = options.registryPath ?? (envRegistryPath ? envRegistryPath : undefined) ?? 'prompts/registry.json';
     this.registryPath = resolveWorkspacePath(configuredRegistryPath, this.workspaceRoot);
     this.registry = this.loadRegistry();

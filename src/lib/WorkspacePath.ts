@@ -5,13 +5,20 @@ export function getWorkspaceRoot(): string {
 }
 
 export function resolveWorkspacePath(inputPath: string, workspaceRoot = getWorkspaceRoot()): string {
-  if (!inputPath) {
-    return workspaceRoot;
+  const trimmedPath = inputPath.trim();
+  if (!trimmedPath) {
+    throw new Error('Workspace path must not be empty.');
   }
 
-  if (path.isAbsolute(inputPath)) {
-    return path.normalize(inputPath);
+  const resolvedRoot = path.resolve(workspaceRoot);
+  const resolvedPath = path.isAbsolute(trimmedPath)
+    ? path.normalize(trimmedPath)
+    : path.resolve(resolvedRoot, trimmedPath);
+
+  const relativePath = path.relative(resolvedRoot, resolvedPath);
+  if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+    throw new Error(`Path escapes workspace root: ${trimmedPath}`);
   }
 
-  return path.resolve(workspaceRoot, inputPath);
+  return resolvedPath;
 }

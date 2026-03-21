@@ -55,8 +55,33 @@ jobs:
       - name: "Build hygiene runner"
         run: npm run build:hygiene
 
+      - name: "Resolve repo hygiene policy path"
+        id: policy_contract
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const workspaceRoot = process.env.GITHUB_WORKSPACE || process.cwd();
+            const policyInput = (process.env.REPO_HYGIENE_POLICY_PATH || '.github/repo-hygiene-policy.json').trim();
+            if (!policyInput) {
+              throw new Error('REPO_HYGIENE_POLICY_PATH must not be empty.');
+            }
+            if (path.isAbsolute(policyInput)) {
+              throw new Error('REPO_HYGIENE_POLICY_PATH must be repo-relative.');
+            }
+            const resolvedPolicy = path.resolve(workspaceRoot, policyInput);
+            const relativePolicy = path.relative(path.resolve(workspaceRoot), resolvedPolicy);
+            if (relativePolicy.startsWith('..') || path.isAbsolute(relativePolicy)) {
+              throw new Error(`REPO_HYGIENE_POLICY_PATH escapes the workspace: ${policyInput}`);
+            }
+            if (!fs.existsSync(resolvedPolicy)) {
+              throw new Error(`Missing policy file: ${resolvedPolicy}`);
+            }
+            core.setOutput('policy_file', resolvedPolicy);
+
       - name: "Validate policy JSON"
-        run: jq . "${REPO_HYGIENE_POLICY_PATH}" >/dev/null
+        run: jq . "${{ steps.policy_contract.outputs.policy_file }}" >/dev/null
 
       - name: "Install OpenCode CLI"
         run: npm install -g opencode-ai

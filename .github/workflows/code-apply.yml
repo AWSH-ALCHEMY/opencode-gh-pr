@@ -100,9 +100,11 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            const path = require('path');
             const eventName = context.eventName;
             const payload = context.payload;
             const isWorkflowCall = eventName === 'workflow_call';
+            const workspaceRoot = process.env.GITHUB_WORKSPACE || process.cwd();
             const workflowInputs = {
               trigger_event: process.env.WORKFLOW_CALL_TRIGGER_EVENT || '',
               pr_number: process.env.WORKFLOW_CALL_PR_NUMBER || '',
@@ -183,7 +185,22 @@ jobs:
                 },
               },
             };
-            const policyPath = process.env.CODE_APPLY_POLICY_PATH || '.github/code-apply-policy.json';
+            const policyPathInput = process.env.CODE_APPLY_POLICY_PATH || '.github/code-apply-policy.json';
+            const policyPath = (() => {
+              const trimmed = policyPathInput.trim();
+              if (!trimmed) {
+                throw new Error('CODE_APPLY_POLICY_PATH must not be empty.');
+              }
+              if (path.isAbsolute(trimmed)) {
+                throw new Error('CODE_APPLY_POLICY_PATH must be repo-relative.');
+              }
+              const resolved = path.resolve(workspaceRoot, trimmed);
+              const relative = path.relative(path.resolve(workspaceRoot), resolved);
+              if (relative.startsWith('..') || path.isAbsolute(relative)) {
+                throw new Error(`CODE_APPLY_POLICY_PATH escapes the workspace: ${trimmed}`);
+              }
+              return trimmed;
+            })();
             const repoInfo = await github.rest.repos.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -657,18 +674,45 @@ jobs:
 
       - name: "Resolve code_apply prompt pack"
         id: prompt_contract
-        run: |
-          prompt_registry_path="${CODE_APPLY_PROMPT_REGISTRY_PATH:-prompts/registry.json}"
-          prompt_file="$(jq -r '.packs[.active.code_apply].system' "$prompt_registry_path")"
-          if [ -z "$prompt_file" ] || [ "$prompt_file" = "null" ]; then
-            echo "Could not resolve code_apply prompt from $prompt_registry_path"
-            exit 1
-          fi
-          if [ ! -f "$prompt_file" ]; then
-            echo "Resolved prompt file does not exist: $prompt_file"
-            exit 1
-          fi
-          echo "prompt_file=$prompt_file" >> "$GITHUB_OUTPUT"
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const workspaceRoot = process.env.GITHUB_WORKSPACE || process.cwd();
+            const registryInput = (process.env.CODE_APPLY_PROMPT_REGISTRY_PATH || 'prompts/registry.json').trim();
+            if (!registryInput) {
+              throw new Error('CODE_APPLY_PROMPT_REGISTRY_PATH must not be empty.');
+            }
+            if (path.isAbsolute(registryInput)) {
+              throw new Error('CODE_APPLY_PROMPT_REGISTRY_PATH must be repo-relative.');
+            }
+            const resolvedRegistry = path.resolve(workspaceRoot, registryInput);
+            const relativeRegistry = path.relative(path.resolve(workspaceRoot), resolvedRegistry);
+            if (relativeRegistry.startsWith('..') || path.isAbsolute(relativeRegistry)) {
+              throw new Error(`CODE_APPLY_PROMPT_REGISTRY_PATH escapes the workspace: ${registryInput}`);
+            }
+            if (!fs.existsSync(resolvedRegistry)) {
+              throw new Error(`Could not resolve code_apply prompt registry: ${resolvedRegistry}`);
+            }
+            const registry = JSON.parse(fs.readFileSync(resolvedRegistry, 'utf8'));
+            const activePackName = registry?.active?.code_apply;
+            const promptPath = registry?.packs?.[activePackName]?.system;
+            if (typeof promptPath !== 'string' || promptPath.trim().length === 0) {
+              throw new Error(`Could not resolve code_apply prompt from ${registryInput}`);
+            }
+            if (path.isAbsolute(promptPath)) {
+              throw new Error('Resolved code_apply prompt path must be repo-relative.');
+            }
+            const resolvedPrompt = path.resolve(workspaceRoot, promptPath);
+            const relativePrompt = path.relative(path.resolve(workspaceRoot), resolvedPrompt);
+            if (relativePrompt.startsWith('..') || path.isAbsolute(relativePrompt)) {
+              throw new Error(`Resolved code_apply prompt escapes the workspace: ${promptPath}`);
+            }
+            if (!fs.existsSync(resolvedPrompt)) {
+              throw new Error(`Resolved prompt file does not exist: ${resolvedPrompt}`);
+            }
+            core.setOutput('prompt_file', resolvedPrompt);
 
       - name: "Run OpenCode apply"
         id: opencode
