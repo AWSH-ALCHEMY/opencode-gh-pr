@@ -58,6 +58,7 @@ jobs:
   repo_sweep:
     name: "🔎 Repository Sweep"
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       status: ${{ steps.normalize.outputs.status }}
       score: ${{ steps.normalize.outputs.score }}
