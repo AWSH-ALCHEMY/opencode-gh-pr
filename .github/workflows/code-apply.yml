@@ -637,7 +637,7 @@ jobs:
           cache: "npm"
 
       - name: "Install OpenCode CLI"
-        run: npm install -g opencode-ai
+        run: npm install -g opencode-ai@1.2.27
 
       - name: "Install repository dependencies"
         run: npm ci --ignore-scripts

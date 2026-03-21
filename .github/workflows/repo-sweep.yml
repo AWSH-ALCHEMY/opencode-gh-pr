@@ -69,7 +69,7 @@ jobs:
           fetch-depth: 0
 
       - name: "Install OpenCode CLI"
-        run: npm install -g opencode-ai
+        run: npm install -g opencode-ai@1.2.27
 
       - name: "Resolve repo sweep prompt pack"
         id: prompt_contract
