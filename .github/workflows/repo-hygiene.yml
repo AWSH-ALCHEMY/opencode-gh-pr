@@ -39,12 +39,12 @@ jobs:
       PROMPT_REGISTRY_PATH: ${{ github.event_name == 'workflow_call' && inputs.prompt_registry_path || 'prompts/registry.json' }}
     steps:
       - name: "Checkout"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: "Setup Node.js"
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: "npm"
@@ -57,7 +57,7 @@ jobs:
 
       - name: "Resolve repo hygiene policy path"
         id: policy_contract
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const fs = require('fs');

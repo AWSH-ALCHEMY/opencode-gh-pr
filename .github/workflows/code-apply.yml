@@ -97,7 +97,7 @@ jobs:
     steps:
       - name: "Parse command and validate context"
         id: resolve
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const path = require('path');
@@ -559,7 +559,7 @@ jobs:
     steps:
       - name: "Post feedback comment"
         id: post_feedback
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const prNumber = Number('${{ needs.resolve-command.outputs.pr_number }}');
@@ -574,7 +574,7 @@ jobs:
             core.setOutput('comment_id', String(created.data.id));
 
       - name: "Cleanup prior managed feedback comments"
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           CURRENT_COMMENT_ID: ${{ steps.post_feedback.outputs.comment_id }}
         with:
@@ -618,7 +618,7 @@ jobs:
       issues: write
     steps:
       - name: "Checkout source PR head"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ needs.resolve-command.outputs.head_sha }}
           fetch-depth: 0
@@ -631,7 +631,7 @@ jobs:
           echo "name=$branch_name" >> "$GITHUB_OUTPUT"
 
       - name: "Setup Node.js"
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: "npm"
@@ -644,7 +644,7 @@ jobs:
 
       - name: "Collect target comments"
         id: collect
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           TARGET_IDS_JSON: ${{ toJSON(matrix.group.ids) }}
         with:
@@ -674,7 +674,7 @@ jobs:
 
       - name: "Resolve code_apply prompt pack"
         id: prompt_contract
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const fs = require('fs');
@@ -804,7 +804,7 @@ jobs:
         id: child_pr
         if: steps.opencode.outcome == 'success' && steps.commit.outputs.changed == 'true'
         continue-on-error: true
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           TARGET_IDS_JSON: ${{ toJSON(matrix.group.ids) }}
         with:
@@ -852,7 +852,7 @@ jobs:
 
       - name: "Resolve targeted AI review threads"
         if: steps.opencode.outcome == 'success' && steps.commit.outputs.changed == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           TARGET_IDS_JSON: ${{ toJSON(matrix.group.ids) }}
         with:
@@ -900,7 +900,7 @@ jobs:
       - name: "Post result comment"
         id: post_result
         if: always()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const opencodeOutcome = '${{ steps.opencode.outcome }}';
@@ -983,7 +983,7 @@ jobs:
 
       - name: "Cleanup prior managed result comments"
         if: always()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           CURRENT_COMMENT_ID: ${{ steps.post_result.outputs.comment_id }}
           TOPIC_SLUG: ${{ matrix.group.slug }}
