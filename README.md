@@ -36,7 +36,7 @@ Narrative mentions (for example, "we can use /code_apply later") are ignored.
 
 ## Reusable workflow interface
 
-- **`/.github/workflows/code-apply.yml`** still listens for `/code_apply` issue and review comments, but it can now also be called directly via `workflow_call`. Provide the triggering event (`issue_comment` or `pull_request_review_comment`), the PR number, comment body, comment metadata (ID, author login/association, optional user type and reply target), and an optional default branch for policy resolution. The workflow keeps the same feedback/result comments and child PR creation logic so downstream repos can reuse it without copying the workflow.
+- **`/.github/workflows/code-apply.yml`** still listens for `/code_apply` issue and review comments, but it can now also be called directly via `workflow_call`. Provide the triggering event (`issue_comment` or `pull_request_review_comment`), the PR number, comment body, comment metadata (ID, author login/association, optional user type and reply target). The workflow keeps the same feedback/result comments and child PR creation logic so downstream repos can reuse it without copying the workflow.
 
 ## Local Dev
 

@@ -15,14 +15,6 @@ on:
         description: 'Pull request number associated with the /code_apply command'
         required: true
         type: number
-      pull_request_number:
-        description: 'Alternate field name for the pull request number when calling via workflow_call'
-        required: false
-        type: number
-      issue_number:
-        description: 'Alternate field name for the pull request number when calling via workflow_call'
-        required: false
-        type: number
       comment_body:
         description: 'Full text of the /code_apply triggering comment'
         required: true
@@ -43,14 +35,12 @@ on:
         description: 'GitHub user type of the command author (User, Bot, etc.)'
         required: false
         type: string
+        default: ''
       comment_in_reply_to_id:
         description: 'Optional reply target used for `/code_apply this`'
         required: false
         type: number
-      default_branch:
-        description: 'Default branch used when loading the code-apply policy document'
-        required: false
-        type: string
+        default: 0
 
 permissions:
   contents: read
@@ -67,14 +57,13 @@ jobs:
     runs-on: ubuntu-latest
     env:
       WORKFLOW_CALL_TRIGGER_EVENT: ${{ inputs.trigger_event || '' }}
-      WORKFLOW_CALL_PR_NUMBER: ${{ inputs.pr_number || inputs.pull_request_number || inputs.issue_number || '' }}
+      WORKFLOW_CALL_PR_NUMBER: ${{ inputs.pr_number || '' }}
       WORKFLOW_CALL_COMMENT_BODY: ${{ inputs.comment_body || '' }}
       WORKFLOW_CALL_COMMENT_ID: ${{ inputs.comment_id || '' }}
       WORKFLOW_CALL_COMMENT_AUTHOR_LOGIN: ${{ inputs.comment_author_login || '' }}
       WORKFLOW_CALL_COMMENT_AUTHOR_ASSOCIATION: ${{ inputs.comment_author_association || '' }}
       WORKFLOW_CALL_COMMENT_USER_TYPE: ${{ inputs.comment_user_type || '' }}
       WORKFLOW_CALL_COMMENT_IN_REPLY_TO_ID: ${{ inputs.comment_in_reply_to_id || '' }}
-      WORKFLOW_CALL_DEFAULT_BRANCH: ${{ inputs.default_branch || '' }}
     outputs:
       should_run: ${{ steps.resolve.outputs.should_run }}
       should_apply: ${{ steps.resolve.outputs.should_apply }}
@@ -111,23 +100,26 @@ jobs:
               comment_author_association: process.env.WORKFLOW_CALL_COMMENT_AUTHOR_ASSOCIATION || '',
               comment_user_type: process.env.WORKFLOW_CALL_COMMENT_USER_TYPE || '',
               comment_in_reply_to_id: process.env.WORKFLOW_CALL_COMMENT_IN_REPLY_TO_ID || '',
-              default_branch: process.env.WORKFLOW_CALL_DEFAULT_BRANCH || '',
             };
             const resolvedEventName = isWorkflowCall ? String(workflowInputs.trigger_event || 'issue_comment') : eventName;
-            const comment = isWorkflowCall
-              ? {
-                  body: workflowInputs.comment_body,
-                  author_association: workflowInputs.comment_author_association,
-                  user: {
-                    login: workflowInputs.comment_author_login,
-                    type: workflowInputs.comment_user_type || 'User',
-                  },
-                  id: workflowInputs.comment_id ? Number(workflowInputs.comment_id) : undefined,
-                  in_reply_to_id: workflowInputs.comment_in_reply_to_id
-                    ? Number(workflowInputs.comment_in_reply_to_id)
-                    : undefined,
-                }
-              : payload.comment;
+            const getComment = () => {
+              if (!isWorkflowCall) {
+                return payload.comment;
+              }
+              return {
+                body: workflowInputs.comment_body,
+                author_association: workflowInputs.comment_author_association,
+                user: {
+                  login: workflowInputs.comment_author_login,
+                  type: workflowInputs.comment_user_type || 'User',
+                },
+                id: workflowInputs.comment_id ? Number(workflowInputs.comment_id) : undefined,
+                in_reply_to_id: workflowInputs.comment_in_reply_to_id
+                  ? Number(workflowInputs.comment_in_reply_to_id)
+                  : undefined,
+              };
+            };
+            const comment = getComment();
             const body = (comment?.body || '').trim();
             const firstLine = (body.split(/\r?\n/)[0] || '').trim();
             const match = firstLine.match(/^\/code_apply(?:\s+(.+))?$/i);
@@ -180,9 +172,11 @@ jobs:
               },
             };
             const policyPath = '.github/code-apply-policy.json';
-            const defaultBranch = String(
-              workflowInputs.default_branch || payload.repository?.default_branch || 'main'
-            );
+            const repoInfo = await github.rest.repos.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            const defaultBranch = repoInfo.data.default_branch || 'main';
 
             const normalizeProfile = (raw) => {
               const allowedRaw = Array.isArray(raw?.allowedAuthorAssociations)
