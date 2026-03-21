@@ -3,6 +3,16 @@ name: "Repo Hygiene Review"
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  workflow_call:
+    inputs:
+      base_sha:
+        description: 'Base commit SHA for the hygiene comparison'
+        required: true
+        type: string
+      head_sha:
+        description: 'Head commit SHA for the hygiene comparison'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -10,8 +20,11 @@ permissions:
 jobs:
   hygiene-ai:
     name: "🧠 Repo Hygiene AI"
-    if: github.event.pull_request.draft == false
+    if: github.event_name == 'workflow_call' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    env:
+      BASE_SHA: ${{ github.event_name == 'workflow_call' && inputs.base_sha || github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.event_name == 'workflow_call' && inputs.head_sha || github.event.pull_request.head.sha }}
     steps:
       - name: "Checkout"
         uses: actions/checkout@v4
@@ -37,7 +50,4 @@ jobs:
         run: npm install -g opencode-ai
 
       - name: "Run AI hygiene checks"
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: node dist/hygiene/index.js
