@@ -5,6 +5,52 @@ on:
     types: [created]
   pull_request_review_comment:
     types: [created]
+  workflow_call:
+    inputs:
+      trigger_event:
+        description: 'Original GitHub event that created the /code_apply command (issue_comment or pull_request_review_comment)'
+        required: true
+        type: string
+      pr_number:
+        description: 'Pull request number associated with the /code_apply command'
+        required: true
+        type: number
+      pull_request_number:
+        description: 'Alternate field name for the pull request number when calling via workflow_call'
+        required: false
+        type: number
+      issue_number:
+        description: 'Alternate field name for the pull request number when calling via workflow_call'
+        required: false
+        type: number
+      comment_body:
+        description: 'Full text of the /code_apply triggering comment'
+        required: true
+        type: string
+      comment_id:
+        description: 'GitHub comment ID of the /code_apply command'
+        required: true
+        type: number
+      comment_author_login:
+        description: 'Login of the user who issued the /code_apply command'
+        required: true
+        type: string
+      comment_author_association:
+        description: 'Author association (OWNER, MEMBER, etc.) of the command author'
+        required: true
+        type: string
+      comment_user_type:
+        description: 'GitHub user type of the command author (User, Bot, etc.)'
+        required: false
+        type: string
+      comment_in_reply_to_id:
+        description: 'Optional reply target used for `/code_apply this`'
+        required: false
+        type: number
+      default_branch:
+        description: 'Default branch used when loading the code-apply policy document'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -19,6 +65,16 @@ jobs:
   resolve-command:
     name: "Resolve /code_apply"
     runs-on: ubuntu-latest
+    env:
+      WORKFLOW_CALL_TRIGGER_EVENT: ${{ inputs.trigger_event || '' }}
+      WORKFLOW_CALL_PR_NUMBER: ${{ inputs.pr_number || inputs.pull_request_number || inputs.issue_number || '' }}
+      WORKFLOW_CALL_COMMENT_BODY: ${{ inputs.comment_body || '' }}
+      WORKFLOW_CALL_COMMENT_ID: ${{ inputs.comment_id || '' }}
+      WORKFLOW_CALL_COMMENT_AUTHOR_LOGIN: ${{ inputs.comment_author_login || '' }}
+      WORKFLOW_CALL_COMMENT_AUTHOR_ASSOCIATION: ${{ inputs.comment_author_association || '' }}
+      WORKFLOW_CALL_COMMENT_USER_TYPE: ${{ inputs.comment_user_type || '' }}
+      WORKFLOW_CALL_COMMENT_IN_REPLY_TO_ID: ${{ inputs.comment_in_reply_to_id || '' }}
+      WORKFLOW_CALL_DEFAULT_BRANCH: ${{ inputs.default_branch || '' }}
     outputs:
       should_run: ${{ steps.resolve.outputs.should_run }}
       should_apply: ${{ steps.resolve.outputs.should_apply }}
@@ -45,7 +101,33 @@ jobs:
           script: |
             const eventName = context.eventName;
             const payload = context.payload;
-            const comment = payload.comment;
+            const isWorkflowCall = eventName === 'workflow_call';
+            const workflowInputs = {
+              trigger_event: process.env.WORKFLOW_CALL_TRIGGER_EVENT || '',
+              pr_number: process.env.WORKFLOW_CALL_PR_NUMBER || '',
+              comment_body: process.env.WORKFLOW_CALL_COMMENT_BODY || '',
+              comment_id: process.env.WORKFLOW_CALL_COMMENT_ID || '',
+              comment_author_login: process.env.WORKFLOW_CALL_COMMENT_AUTHOR_LOGIN || '',
+              comment_author_association: process.env.WORKFLOW_CALL_COMMENT_AUTHOR_ASSOCIATION || '',
+              comment_user_type: process.env.WORKFLOW_CALL_COMMENT_USER_TYPE || '',
+              comment_in_reply_to_id: process.env.WORKFLOW_CALL_COMMENT_IN_REPLY_TO_ID || '',
+              default_branch: process.env.WORKFLOW_CALL_DEFAULT_BRANCH || '',
+            };
+            const resolvedEventName = isWorkflowCall ? String(workflowInputs.trigger_event || 'issue_comment') : eventName;
+            const comment = isWorkflowCall
+              ? {
+                  body: workflowInputs.comment_body,
+                  author_association: workflowInputs.comment_author_association,
+                  user: {
+                    login: workflowInputs.comment_author_login,
+                    type: workflowInputs.comment_user_type || 'User',
+                  },
+                  id: workflowInputs.comment_id ? Number(workflowInputs.comment_id) : undefined,
+                  in_reply_to_id: workflowInputs.comment_in_reply_to_id
+                    ? Number(workflowInputs.comment_in_reply_to_id)
+                    : undefined,
+                }
+              : payload.comment;
             const body = (comment?.body || '').trim();
             const firstLine = (body.split(/\r?\n/)[0] || '').trim();
             const match = firstLine.match(/^\/code_apply(?:\s+(.+))?$/i);
@@ -98,7 +180,9 @@ jobs:
               },
             };
             const policyPath = '.github/code-apply-policy.json';
-            const defaultBranch = payload.repository?.default_branch || 'main';
+            const defaultBranch = String(
+              workflowInputs.default_branch || payload.repository?.default_branch || 'main'
+            );
 
             const normalizeProfile = (raw) => {
               const allowedRaw = Array.isArray(raw?.allowedAuthorAssociations)
@@ -190,13 +274,18 @@ jobs:
             }
 
             let prNumber = null;
-            if (eventName === 'issue_comment') {
+            if (isWorkflowCall) {
+              const parsedPr = Number(workflowInputs.pr_number);
+              if (Number.isInteger(parsedPr) && parsedPr > 0) {
+                prNumber = parsedPr;
+              }
+            } else if (resolvedEventName === 'issue_comment') {
               if (!payload.issue?.pull_request) {
                 setOutput('feedback', '`/code_apply` only works on pull requests.');
                 return;
               }
               prNumber = payload.issue.number;
-            } else if (eventName === 'pull_request_review_comment') {
+            } else if (resolvedEventName === 'pull_request_review_comment') {
               prNumber = payload.pull_request?.number || null;
             }
 
@@ -326,7 +415,7 @@ jobs:
             };
 
             if (!arg || (tokens.length === 1 && tokens[0] === 'this')) {
-              if (eventName !== 'pull_request_review_comment') {
+              if (resolvedEventName !== 'pull_request_review_comment') {
                 setOutput('feedback', 'Use `/code_apply --all` or `/code_apply <comment_id>` in PR conversation comments.');
                 return;
               }
