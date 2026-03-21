@@ -2,6 +2,8 @@
 
 GitHub Actions workflows for AI-assisted pull request review and targeted `/code_apply` fixes.
 
+Recommended consumer pin: `AWSH-ALCHEMY/opencode-gh-pr@v1.1.1`
+
 ## Workflows
 
 - `.github/workflows/main.yml`
