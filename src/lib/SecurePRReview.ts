@@ -14,6 +14,7 @@ export interface SecurePRReviewOptions {
   config: ActionConfig;
   logger: Logger;
   repo: { owner: string; repo: string };
+  promptRegistryPath?: string;
 }
 
 export class SecurePRReview {
@@ -62,10 +63,16 @@ export class SecurePRReview {
       prNumber: this.prNumber,
     });
     
-    this.aiReviewer = new AIReviewer({
-      logger: this.logger,
-      baseSha: this.baseSha,
-    });
+    this.aiReviewer = options.promptRegistryPath
+      ? new AIReviewer({
+          logger: this.logger,
+          baseSha: this.baseSha,
+          promptRegistryPath: options.promptRegistryPath,
+        })
+      : new AIReviewer({
+          logger: this.logger,
+          baseSha: this.baseSha,
+        });
     
     this.securityScanner = new SecurityScanner({
       config: this.config,

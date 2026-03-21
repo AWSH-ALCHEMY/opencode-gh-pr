@@ -52,9 +52,14 @@ inputs:
 
   # Advanced Options
   config-file:
-    description: 'Path to a custom configuration file'
+    description: 'Path to a custom configuration file, resolved relative to the checked-out repository'
     required: false
     default: '.github/pr-review-config.yml'
+
+  prompt-registry-path:
+    description: 'Path to a custom prompt registry, resolved relative to the checked-out repository'
+    required: false
+    default: 'prompts/registry.json'
 
   # Output Control
   create-checks:

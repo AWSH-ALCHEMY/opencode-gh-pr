@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { Logger } from './Logger';
+import { getWorkspaceRoot, resolveWorkspacePath } from './WorkspacePath';
 
 type PromptTask = 'ai_review' | 'code_apply' | 'hygiene_review';
 
@@ -31,11 +32,15 @@ export interface ResolvedPromptPack {
 export class PromptContracts {
   private readonly logger: Logger;
   private readonly registryPath: string;
+  private readonly workspaceRoot: string;
   private readonly registry: PromptRegistry;
 
-  constructor(options: { logger: Logger; registryPath?: string }) {
+  constructor(options: { logger: Logger; registryPath?: string; workspaceRoot?: string }) {
     this.logger = options.logger;
-    this.registryPath = options.registryPath || path.resolve(process.cwd(), 'prompts/registry.json');
+    this.workspaceRoot = options.workspaceRoot ?? getWorkspaceRoot();
+    const envRegistryPath = process.env['PROMPT_REGISTRY_PATH']?.trim();
+    const configuredRegistryPath = options.registryPath ?? (envRegistryPath ? envRegistryPath : undefined) ?? 'prompts/registry.json';
+    this.registryPath = resolveWorkspacePath(configuredRegistryPath, this.workspaceRoot);
     this.registry = this.loadRegistry();
   }
 
@@ -91,9 +96,9 @@ export class PromptContracts {
       task,
       version: pack.version,
       riskTier: pack.riskTier,
-      systemPath: path.relative(process.cwd(), pack.systemPath),
-      templatePath: pack.templatePath ? path.relative(process.cwd(), pack.templatePath) : '',
-      schemaPath: pack.schemaPath ? path.relative(process.cwd(), pack.schemaPath) : '',
+      systemPath: path.relative(this.workspaceRoot, pack.systemPath),
+      templatePath: pack.templatePath ? path.relative(this.workspaceRoot, pack.templatePath) : '',
+      schemaPath: pack.schemaPath ? path.relative(this.workspaceRoot, pack.schemaPath) : '',
     });
 
     return { text: fullPrompt, pack };
@@ -142,7 +147,7 @@ export class PromptContracts {
   }
 
   private resolvePath(relativePath: string): string {
-    return path.resolve(process.cwd(), relativePath);
+    return resolveWorkspacePath(relativePath, this.workspaceRoot);
   }
 
   private assertFileExists(filePath: string, label: string): void {

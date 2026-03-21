@@ -19,6 +19,20 @@ GitHub Actions workflows for AI-assisted pull request review and targeted `/code
 - `.github/repo-hygiene-policy.json`: forbidden files + severity/confidence fail thresholds.
 - `prompts/registry.json` and `prompts/*`: prompt packs for review, hygiene, and code apply.
 
+## Overrides
+
+These entrypoints now support explicit override paths so downstream repos can bring their own policy or prompt registry without forking the implementation:
+
+- `action.yml`
+  - `config-file`: custom PR review config file, resolved relative to the checked-out repository.
+  - `prompt-registry-path`: custom prompt registry for Secure PR Review and the prompt packs it loads.
+- `/.github/workflows/code-apply.yml`
+  - `policy_path`: custom `/code_apply` policy file.
+  - `prompt_registry_path`: custom prompt registry for the apply prompt pack.
+- `/.github/workflows/repo-hygiene.yml`
+  - `policy_path`: custom repo hygiene policy file.
+  - `prompt_registry_path`: custom prompt registry for the hygiene prompt pack.
+
 ## Command Notes
 
 `code-apply.yml` can start on any PR `issue_comment`, but command logic only executes when the comment body is a single-line standalone command:
@@ -36,8 +50,8 @@ Narrative mentions (for example, "we can use /code_apply later") are ignored.
 
 ## Reusable workflow interface
 
-- **`/.github/workflows/code-apply.yml`** still listens for `/code_apply` issue and review comments, but it can now also be called directly via `workflow_call`. Provide the triggering event (`issue_comment` or `pull_request_review_comment`), the PR number, comment body, comment metadata (ID, author login/association, optional user type and reply target). The workflow keeps the same feedback/result comments and child PR creation logic so downstream repos can reuse it without copying the workflow.
-- **`/.github/workflows/repo-hygiene.yml`** now exposes `workflow_call` inputs for `base_sha` and `head_sha`, so downstream repos can run the same hygiene checks from a parent workflow while keeping the existing PR event trigger in this repo.
+- **`/.github/workflows/code-apply.yml`** still listens for `/code_apply` issue and review comments, but it can now also be called directly via `workflow_call`. Provide the triggering event (`issue_comment` or `pull_request_review_comment`), the PR number, comment body, comment metadata (ID, author login/association, optional user type and reply target), plus optional prompt registry and policy paths when you want to override the bundled defaults.
+- **`/.github/workflows/repo-hygiene.yml`** now exposes `workflow_call` inputs for `base_sha`, `head_sha`, and optional prompt/policy paths, so downstream repos can run the same hygiene checks from a parent workflow while keeping the existing PR event trigger in this repo.
 
 ## Local Dev
 

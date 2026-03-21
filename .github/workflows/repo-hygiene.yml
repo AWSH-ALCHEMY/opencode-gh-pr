@@ -13,6 +13,16 @@ on:
         description: 'Head commit SHA for the hygiene comparison'
         required: true
         type: string
+      policy_path:
+        description: 'Path to the repo hygiene policy file'
+        required: false
+        type: string
+        default: '.github/repo-hygiene-policy.json'
+      prompt_registry_path:
+        description: 'Path to the prompt registry used by the hygiene reviewer'
+        required: false
+        type: string
+        default: 'prompts/registry.json'
 
 permissions:
   contents: read
@@ -25,6 +35,8 @@ jobs:
     env:
       BASE_SHA: ${{ github.event_name == 'workflow_call' && inputs.base_sha || github.event.pull_request.base.sha }}
       HEAD_SHA: ${{ github.event_name == 'workflow_call' && inputs.head_sha || github.event.pull_request.head.sha }}
+      REPO_HYGIENE_POLICY_PATH: ${{ github.event_name == 'workflow_call' && inputs.policy_path || '.github/repo-hygiene-policy.json' }}
+      PROMPT_REGISTRY_PATH: ${{ github.event_name == 'workflow_call' && inputs.prompt_registry_path || 'prompts/registry.json' }}
     steps:
       - name: "Checkout"
         uses: actions/checkout@v4
@@ -44,7 +56,7 @@ jobs:
         run: npm run build:hygiene
 
       - name: "Validate policy JSON"
-        run: jq . .github/repo-hygiene-policy.json >/dev/null
+        run: jq . "${REPO_HYGIENE_POLICY_PATH}" >/dev/null
 
       - name: "Install OpenCode CLI"
         run: npm install -g opencode-ai

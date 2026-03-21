@@ -41,6 +41,16 @@ on:
         required: false
         type: number
         default: 0
+      policy_path:
+        description: 'Path to the /code_apply policy file'
+        required: false
+        type: string
+        default: '.github/code-apply-policy.json'
+      prompt_registry_path:
+        description: 'Path to the prompt registry used to resolve the /code_apply prompt pack'
+        required: false
+        type: string
+        default: 'prompts/registry.json'
 
 permissions:
   contents: read
@@ -64,6 +74,8 @@ jobs:
       WORKFLOW_CALL_COMMENT_AUTHOR_ASSOCIATION: ${{ inputs.comment_author_association || '' }}
       WORKFLOW_CALL_COMMENT_USER_TYPE: ${{ inputs.comment_user_type || '' }}
       WORKFLOW_CALL_COMMENT_IN_REPLY_TO_ID: ${{ inputs.comment_in_reply_to_id || '' }}
+      CODE_APPLY_POLICY_PATH: ${{ github.event_name == 'workflow_call' && inputs.policy_path || '.github/code-apply-policy.json' }}
+      CODE_APPLY_PROMPT_REGISTRY_PATH: ${{ github.event_name == 'workflow_call' && inputs.prompt_registry_path || 'prompts/registry.json' }}
     outputs:
       should_run: ${{ steps.resolve.outputs.should_run }}
       should_apply: ${{ steps.resolve.outputs.should_apply }}
@@ -171,7 +183,7 @@ jobs:
                 },
               },
             };
-            const policyPath = '.github/code-apply-policy.json';
+            const policyPath = process.env.CODE_APPLY_POLICY_PATH || '.github/code-apply-policy.json';
             const repoInfo = await github.rest.repos.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -646,9 +658,10 @@ jobs:
       - name: "Resolve code_apply prompt pack"
         id: prompt_contract
         run: |
-          prompt_file="$(jq -r '.packs[.active.code_apply].system' prompts/registry.json)"
+          prompt_registry_path="${CODE_APPLY_PROMPT_REGISTRY_PATH:-prompts/registry.json}"
+          prompt_file="$(jq -r '.packs[.active.code_apply].system' "$prompt_registry_path")"
           if [ -z "$prompt_file" ] || [ "$prompt_file" = "null" ]; then
-            echo "Could not resolve code_apply prompt from prompts/registry.json"
+            echo "Could not resolve code_apply prompt from $prompt_registry_path"
             exit 1
           fi
           if [ ! -f "$prompt_file" ]; then

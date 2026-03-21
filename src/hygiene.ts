@@ -3,12 +3,13 @@ import * as fs from 'fs';
 import { Logger } from './lib/Logger';
 import { RepoHygienePolicy } from './lib/types';
 import { RepoHygieneReviewer } from './lib/RepoHygieneReviewer';
+import { resolveWorkspacePath } from './lib/WorkspacePath';
 
 function loadPolicy(path: string): RepoHygienePolicy {
   const raw = fs.readFileSync(path, 'utf8');
   const parsed = JSON.parse(raw) as Partial<RepoHygienePolicy>;
 
-  const aiReviewRaw = parsed.aiReview || ({} as RepoHygienePolicy['aiReview']);
+  const aiReviewRaw = parsed.aiReview ?? ({} as RepoHygienePolicy['aiReview']);
   const aiReview: RepoHygienePolicy['aiReview'] = {
     model: typeof aiReviewRaw.model === 'string' ? aiReviewRaw.model : 'opencode-reviewer',
     failOnDecision: aiReviewRaw.failOnDecision === 'pass' ? 'pass' : 'fail',
@@ -36,9 +37,10 @@ function loadPolicy(path: string): RepoHygienePolicy {
 
 async function run(): Promise<void> {
   const logger = new Logger('🧹 RepoHygiene');
-  const baseSha = process.env['BASE_SHA'] || '';
-  const headSha = process.env['HEAD_SHA'] || '';
-  const policyPath = '.github/repo-hygiene-policy.json';
+  const baseSha = process.env['BASE_SHA'] ?? '';
+  const headSha = process.env['HEAD_SHA'] ?? '';
+  const policyPath = resolveWorkspacePath(process.env['REPO_HYGIENE_POLICY_PATH'] ?? '.github/repo-hygiene-policy.json');
+  const promptRegistryPath = process.env['PROMPT_REGISTRY_PATH'] ?? '';
 
   if (!baseSha || !headSha) {
     throw new Error('BASE_SHA and HEAD_SHA are required.');
@@ -49,7 +51,12 @@ async function run(): Promise<void> {
   }
 
   const policy = loadPolicy(policyPath);
-  const reviewer = new RepoHygieneReviewer({ logger, policy });
+  const reviewerOptions = {
+    logger,
+    policy,
+    ...(promptRegistryPath ? { promptRegistryPath } : {}),
+  };
+  const reviewer = new RepoHygieneReviewer(reviewerOptions);
   const outcome = await reviewer.run(baseSha, headSha);
 
   core.info(`Repo Hygiene AI decision: ${outcome.result.decision}`);
@@ -59,7 +66,7 @@ async function run(): Promise<void> {
     core.info(`Summary: ${outcome.result.summary}`);
   }
 
-  const stepSummaryPath = process.env['GITHUB_STEP_SUMMARY'] || '';
+  const stepSummaryPath = process.env['GITHUB_STEP_SUMMARY'] ?? '';
   if (stepSummaryPath) {
     const lines: string[] = [];
     lines.push('### Repo Hygiene AI Review');
@@ -67,7 +74,7 @@ async function run(): Promise<void> {
     lines.push(`- Decision: \`${outcome.result.decision}\``);
     lines.push(`- Changed files: \`${outcome.changedFiles.length}\``);
     lines.push(`- Findings: \`${outcome.result.findings.length}\``);
-    lines.push(`- Summary: ${outcome.result.summary || 'No summary provided.'}`);
+    lines.push(`- Summary: ${outcome.result.summary ?? 'No summary provided.'}`);
     if (outcome.severeFindings.length > 0) {
       lines.push('');
       lines.push('#### High-Confidence Findings');
@@ -85,7 +92,7 @@ async function run(): Promise<void> {
   }
 }
 
-run().catch((error: unknown) => {
+void run().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);
   core.setFailed(message);
 });
