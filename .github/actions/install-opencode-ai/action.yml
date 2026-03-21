@@ -17,7 +17,7 @@ runs:
 
         version="${{ inputs.version }}"
         metadata_file="$(mktemp)"
-        tarball_file="$(mktemp)"
+        tarball_file="$(mktemp "${RUNNER_TEMP:-/tmp}/opencode-ai-XXXXXX.tgz")"
 
         npm view "opencode-ai@${version}" dist.tarball dist.integrity dist.signatures --json > "${metadata_file}"
 
