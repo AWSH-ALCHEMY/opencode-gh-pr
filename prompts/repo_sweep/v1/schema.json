@@ -1,1 +1,84 @@
-{}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AWSH-ALCHEMY/opencode-gh-pr/prompts/repo_sweep/v1/schema.json",
+  "title": "Repository Sweep Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "status",
+    "summary",
+    "overallScore",
+    "findings",
+    "recommendations"
+  ],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["pass", "warn", "fail"]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "overallScore": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 10
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "severity",
+          "category",
+          "path",
+          "title",
+          "details",
+          "recommendation"
+        ],
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": ["low", "medium", "high", "critical"]
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "architecture",
+              "security",
+              "maintenance",
+              "docs",
+              "tests",
+              "dependencies",
+              "other"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "details": {
+            "type": "string",
+            "minLength": 1
+          },
+          "recommendation": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "recommendations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}
