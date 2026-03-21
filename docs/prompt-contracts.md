@@ -9,6 +9,7 @@ This repository uses prompt contracts to keep AI interactions versioned and audi
   - `prompts/review/v1/`
   - `prompts/code_apply/v1/`
   - `prompts/hygiene/v1/`
+  - `prompts/repo_sweep/v1/`
 
 Each pack defines:
 
@@ -31,6 +32,7 @@ Each pack defines:
 - Workflow `/code_apply` resolves its prompt path from the configured prompt registry via `jq`.
 - Workflow `/code_apply` policy loading can be overridden with the `policy_path` workflow input.
 - Repo hygiene policy loading can be overridden with the `policy_path` workflow input.
+- Repository sweep uses the `repo_sweep` prompt pack and emits a structured JSON report artifact plus step summary.
 
 ## Hygiene Prompt Notes
 

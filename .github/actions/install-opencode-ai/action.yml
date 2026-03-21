@@ -1,0 +1,43 @@
+name: "Install OpenCode AI"
+description: "Install the pinned OpenCode CLI version used by this repository with tarball integrity verification"
+
+inputs:
+  version:
+    description: "OpenCode AI version to install"
+    required: false
+    default: "1.2.27"
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Verify and install OpenCode AI"
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        version="${{ inputs.version }}"
+        metadata_file="$(mktemp)"
+        tarball_file="$(mktemp "${RUNNER_TEMP:-/tmp}/opencode-ai-XXXXXX.tgz")"
+
+        npm view "opencode-ai@${version}" dist.tarball dist.integrity dist.signatures --json > "${metadata_file}"
+
+        tarball_url="$(node -e "const fs = require('fs'); const meta = JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); const value = meta?.dist?.tarball ?? meta['dist.tarball']; if (typeof value !== 'string' || value.length === 0) { process.exit(1); } process.stdout.write(value);" "${metadata_file}")"
+        expected_integrity="$(node -e "const fs = require('fs'); const meta = JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); const value = meta?.dist?.integrity ?? meta['dist.integrity']; if (typeof value !== 'string' || value.length === 0) { process.exit(1); } process.stdout.write(value);" "${metadata_file}")"
+
+        curl -fsSL "${tarball_url}" -o "${tarball_file}"
+
+        actual_integrity="sha512-$(openssl dgst -sha512 -binary "${tarball_file}" | openssl base64 -A)"
+        if [ "${actual_integrity}" != "${expected_integrity}" ]; then
+          echo "OpenCode tarball integrity check failed." >&2
+          echo "Expected: ${expected_integrity}" >&2
+          echo "Actual:   ${actual_integrity}" >&2
+          exit 1
+        fi
+
+        if node -e "const fs = require('fs'); const meta = JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); const signatures = meta?.dist?.signatures ?? meta['dist.signatures']; process.exit(Array.isArray(signatures) && signatures.length > 0 ? 0 : 1);" "${metadata_file}"; then
+          echo "OpenCode registry metadata includes npm package signatures."
+        else
+          echo "OpenCode registry metadata does not include package signatures." >&2
+        fi
+
+        npm install -g "${tarball_file}"
