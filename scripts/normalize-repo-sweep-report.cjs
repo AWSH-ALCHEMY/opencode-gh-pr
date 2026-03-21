@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 function readEnv(name) {
   const value = process.env[name];
@@ -15,15 +16,20 @@ function isPlainObject(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function stripAnsi(text) {
+  return text.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '');
+}
+
 function readTail(text, maxLines = 20) {
   return text.split(/\r?\n/).slice(-maxLines).join('\n').trim();
 }
 
 function extractCandidateJson(raw) {
+  const sanitizedRaw = stripAnsi(raw);
   let textPayload = '';
-  let lastJson = '';
+  let lastRawObject = '';
 
-  for (const line of raw.split(/\r?\n/)) {
+  for (const line of sanitizedRaw.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!(trimmed.startsWith('{') && trimmed.endsWith('}'))) {
       continue;
@@ -31,20 +37,21 @@ function extractCandidateJson(raw) {
 
     try {
       const parsed = JSON.parse(trimmed);
-      lastJson = trimmed;
       if (parsed && parsed.type === 'text') {
         const part = parsed.part || {};
         const text = typeof part.text === 'string' ? part.text.trim() : '';
         if (text) {
           textPayload = text;
         }
+      } else {
+        lastRawObject = trimmed;
       }
     } catch {
       continue;
     }
   }
 
-  const candidate = textPayload || lastJson;
+  const candidate = lastRawObject || textPayload;
   if (!candidate) {
     return '';
   }
@@ -140,7 +147,8 @@ function setOutput(name, value) {
   if (!outputPath) {
     return;
   }
-  fs.appendFileSync(outputPath, `${name}=${String(value)}\n`, 'utf8');
+  const delimiter = `EOF_${crypto.randomUUID()}`;
+  fs.appendFileSync(outputPath, `${name}<<${delimiter}\n${String(value)}\n${delimiter}\n`, 'utf8');
 }
 
 function appendSummary(report, reportFile) {

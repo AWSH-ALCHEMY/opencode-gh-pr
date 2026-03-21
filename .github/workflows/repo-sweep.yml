@@ -52,6 +52,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   repo_sweep:
