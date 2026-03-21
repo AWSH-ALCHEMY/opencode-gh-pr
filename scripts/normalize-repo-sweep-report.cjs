@@ -17,7 +17,7 @@ function isPlainObject(value) {
 }
 
 function stripAnsi(text) {
-  return text.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '');
+  return text.replace(/[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\u0007)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-ntqry=><~]))/g, '');
 }
 
 function readTail(text, maxLines = 20) {
@@ -51,7 +51,7 @@ function extractCandidateJson(raw) {
     }
   }
 
-  const candidate = lastRawObject || textPayload;
+  const candidate = textPayload || lastRawObject;
   if (!candidate) {
     return '';
   }
@@ -100,16 +100,15 @@ function normalizeRecommendations(recommendations) {
 
 function parseReport(rawReport, exitCode) {
   if (!isPlainObject(rawReport)) {
-    if (exitCode !== 0) {
-      return {
-        status: 'fail',
-        summary: `Repository sweep exited with code ${exitCode}.`,
-        overallScore: 0,
-        findings: [],
-        recommendations: [],
-      };
-    }
-    throw new Error('OpenCode output did not contain a parseable JSON report.');
+    return {
+      status: 'fail',
+      summary: exitCode === 0
+        ? 'OpenCode output did not contain a parseable JSON report.'
+        : `Repository sweep exited with code ${exitCode}.`,
+      overallScore: 0,
+      findings: [],
+      recommendations: [],
+    };
   }
 
   const summary = typeof rawReport.summary === 'string' && rawReport.summary.trim().length > 0
@@ -184,11 +183,18 @@ async function main() {
   const exitCode = Number(process.env.REPO_SWEEP_EXIT_CODE || '0');
 
   const rawLog = fs.readFileSync(logPath, 'utf8');
+  let parsedReport = null;
   const candidateJson = extractCandidateJson(rawLog);
-  const parsedReport = candidateJson ? JSON.parse(candidateJson) : null;
+  if (candidateJson) {
+    try {
+      parsedReport = JSON.parse(candidateJson);
+    } catch {
+      parsedReport = null;
+    }
+  }
   const report = parseReport(parsedReport, exitCode);
 
-  if (exitCode !== 0 && !candidateJson) {
+  if (!candidateJson) {
     report.summary = `${report.summary} Log tail: ${readTail(rawLog) || 'no output captured.'}`;
   }
 

@@ -176,3 +176,10 @@ jobs:
         with:
           name: ${{ env.REPO_SWEEP_ARTIFACT_NAME }}
           path: ${{ steps.normalize.outputs.report_file }}
+
+      - name: "Upload raw sweep log"
+        if: always() && steps.sweep.outputs.log_path != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.REPO_SWEEP_ARTIFACT_NAME }}-raw-log
+          path: ${{ steps.sweep.outputs.log_path }}

@@ -35,6 +35,7 @@
       "version": "1.0.0",
       "riskTier": "medium",
       "system": "prompts/repo_sweep/v1/system.prompt.md",
+      "template": "prompts/repo_sweep/v1/user.prompt.md",
       "schema": "prompts/repo_sweep/v1/schema.json"
     }
   }
