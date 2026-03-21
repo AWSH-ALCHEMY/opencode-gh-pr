@@ -1,0 +1,267 @@
+name: "Repository Sweep Audit"
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt_registry_path:
+        description: "Path to the prompt registry used to resolve the repo sweep prompt pack"
+        required: false
+        default: "prompts/registry.json"
+      report_path:
+        description: "Path where the generated JSON report should be written"
+        required: false
+        default: "artifacts/repo_sweep_report.json"
+      artifact_name:
+        description: "Artifact name for the JSON sweep report"
+        required: false
+        default: "repo-sweep-report"
+  workflow_call:
+    inputs:
+      prompt_registry_path:
+        description: "Path to the prompt registry used to resolve the repo sweep prompt pack"
+        required: false
+        type: string
+        default: "prompts/registry.json"
+      report_path:
+        description: "Path where the generated JSON report should be written"
+        required: false
+        type: string
+        default: "artifacts/repo_sweep_report.json"
+      artifact_name:
+        description: "Artifact name for the JSON sweep report"
+        required: false
+        type: string
+        default: "repo-sweep-report"
+    outputs:
+      status:
+        description: "Normalized sweep status"
+        value: ${{ jobs.repo_sweep.outputs.status }}
+      score:
+        description: "Overall sweep score"
+        value: ${{ jobs.repo_sweep.outputs.score }}
+      findings_count:
+        description: "Number of findings in the sweep report"
+        value: ${{ jobs.repo_sweep.outputs.findings_count }}
+      report_file:
+        description: "Path to the generated JSON report"
+        value: ${{ jobs.repo_sweep.outputs.report_file }}
+
+permissions:
+  contents: read
+
+jobs:
+  repo_sweep:
+    name: "🔎 Repository Sweep"
+    runs-on: ubuntu-latest
+    outputs:
+      status: ${{ steps.normalize.outputs.status }}
+      score: ${{ steps.normalize.outputs.score }}
+      findings_count: ${{ steps.normalize.outputs.findings_count }}
+      report_file: ${{ steps.normalize.outputs.report_file }}
+    env:
+      REPO_SWEEP_PROMPT_REGISTRY_PATH: ${{ inputs.prompt_registry_path || 'prompts/registry.json' }}
+      REPO_SWEEP_REPORT_PATH: ${{ inputs.report_path || 'artifacts/repo_sweep_report.json' }}
+      REPO_SWEEP_ARTIFACT_NAME: ${{ inputs.artifact_name || 'repo-sweep-report' }}
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: "Install OpenCode CLI"
+        run: npm install -g opencode-ai
+
+      - name: "Resolve repo sweep prompt pack"
+        id: prompt_contract
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const workspaceRoot = process.env.GITHUB_WORKSPACE || process.cwd();
+            const registryInput = (process.env.REPO_SWEEP_PROMPT_REGISTRY_PATH || 'prompts/registry.json').trim();
+            const reportInput = (process.env.REPO_SWEEP_REPORT_PATH || 'artifacts/repo_sweep_report.json').trim();
+
+            if (!registryInput) {
+              throw new Error('REPO_SWEEP_PROMPT_REGISTRY_PATH must not be empty.');
+            }
+            if (!reportInput) {
+              throw new Error('REPO_SWEEP_REPORT_PATH must not be empty.');
+            }
+            if (path.isAbsolute(registryInput)) {
+              throw new Error('REPO_SWEEP_PROMPT_REGISTRY_PATH must be repo-relative.');
+            }
+
+            const resolvedRoot = path.resolve(workspaceRoot);
+            const resolvedRegistry = path.resolve(resolvedRoot, registryInput);
+            const registryRelative = path.relative(resolvedRoot, resolvedRegistry);
+            if (registryRelative.startsWith('..') || path.isAbsolute(registryRelative)) {
+              throw new Error(`REPO_SWEEP_PROMPT_REGISTRY_PATH escapes the workspace: ${registryInput}`);
+            }
+
+            if (!fs.existsSync(resolvedRegistry)) {
+              throw new Error(`Prompt registry file not found: ${resolvedRegistry}`);
+            }
+
+            const registry = JSON.parse(fs.readFileSync(resolvedRegistry, 'utf8'));
+            const activePackName = registry?.active?.repo_sweep;
+            if (typeof activePackName !== 'string' || activePackName.trim().length === 0) {
+              throw new Error(`No active repo_sweep prompt pack configured in ${registryInput}.`);
+            }
+
+            const promptPath = registry?.packs?.[activePackName]?.system;
+            if (typeof promptPath !== 'string' || promptPath.trim().length === 0) {
+              throw new Error(`Could not resolve repo_sweep prompt from ${registryInput}.`);
+            }
+            if (path.isAbsolute(promptPath)) {
+              throw new Error('Resolved repo_sweep prompt path must be repo-relative.');
+            }
+
+            const resolvedPrompt = path.resolve(resolvedRoot, promptPath);
+            const promptRelative = path.relative(resolvedRoot, resolvedPrompt);
+            if (promptRelative.startsWith('..') || path.isAbsolute(promptRelative)) {
+              throw new Error(`Resolved repo_sweep prompt escapes the workspace: ${promptPath}`);
+            }
+
+            if (!fs.existsSync(resolvedPrompt)) {
+              throw new Error(`Resolved repo_sweep prompt file does not exist: ${resolvedPrompt}`);
+            }
+
+            const resolvedReport = path.resolve(resolvedRoot, reportInput);
+            const reportRelative = path.relative(resolvedRoot, resolvedReport);
+            if (reportRelative.startsWith('..') || path.isAbsolute(reportRelative)) {
+              throw new Error(`REPO_SWEEP_REPORT_PATH escapes the workspace: ${reportInput}`);
+            }
+
+            fs.mkdirSync(path.dirname(resolvedReport), { recursive: true });
+
+            core.setOutput('prompt_file', resolvedPrompt);
+            core.setOutput('report_file', resolvedReport);
+
+      - name: "Run repo sweep"
+        id: sweep
+        continue-on-error: true
+        timeout-minutes: 20
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat "${{ steps.prompt_contract.outputs.prompt_file }}" > /tmp/repo_sweep_prompt.txt
+          : > /tmp/repo_sweep_opencode.log
+          set +e
+          timeout --signal=TERM --kill-after=30s 1200s opencode run - --format json < /tmp/repo_sweep_prompt.txt 2>&1 | tee /tmp/repo_sweep_opencode.log
+          rc=${PIPESTATUS[0]}
+          echo "exit_code=${rc}" >> "$GITHUB_OUTPUT"
+          echo "log_path=/tmp/repo_sweep_opencode.log" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: "Normalize report"
+        id: normalize
+        shell: bash
+        env:
+          REPO_SWEEP_REPORT_FILE: ${{ steps.prompt_contract.outputs.report_file }}
+          REPO_SWEEP_LOG_PATH: ${{ steps.sweep.outputs.log_path }}
+          REPO_SWEEP_EXIT_CODE: ${{ steps.sweep.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+
+          const reportFile = process.env.REPO_SWEEP_REPORT_FILE;
+          const logPath = process.env.REPO_SWEEP_LOG_PATH;
+          const exitCode = Number(process.env.REPO_SWEEP_EXIT_CODE || '0');
+          const summaryPath = process.env.GITHUB_STEP_SUMMARY || '';
+          const outputPath = process.env.GITHUB_OUTPUT || '';
+
+          const setOutput = (name, value) => {
+            if (!outputPath) {
+              return;
+            }
+            fs.appendFileSync(outputPath, `${name}=${String(value)}\n`, 'utf8');
+          };
+
+          const raw = fs.readFileSync(logPath, 'utf8');
+          let textPayload = '';
+          let lastJson = '';
+
+          for (const line of raw.split(/\r?\n/)) {
+            const trimmed = line.trim();
+            if (!(trimmed.startsWith('{') && trimmed.endsWith('}'))) {
+              continue;
+            }
+            try {
+              const parsed = JSON.parse(trimmed);
+              lastJson = trimmed;
+              if (parsed && parsed.type === 'text') {
+                const part = parsed.part || {};
+                const text = typeof part.text === 'string' ? part.text : '';
+                if (text) {
+                  textPayload = text;
+                }
+              }
+            } catch {
+              continue;
+            }
+          }
+
+          const candidate = textPayload || lastJson;
+          if (!candidate) {
+            throw new Error('No parseable JSON output was produced by OpenCode.');
+          }
+
+          let report;
+          try {
+            report = JSON.parse(candidate);
+          } catch {
+            const start = candidate.indexOf('{');
+            const end = candidate.lastIndexOf('}');
+            if (start < 0 || end <= start) {
+              throw new Error('OpenCode output did not contain a parseable JSON report.');
+            }
+            report = JSON.parse(candidate.slice(start, end + 1));
+          }
+
+          const normalized = {
+            status: typeof report.status === 'string' ? report.status : 'warn',
+            summary: typeof report.summary === 'string' ? report.summary : 'Repository sweep completed.',
+            overallScore: typeof report.overallScore === 'number' ? report.overallScore : 0,
+            findings: Array.isArray(report.findings) ? report.findings : [],
+            recommendations: Array.isArray(report.recommendations) ? report.recommendations : [],
+            exitCode,
+            generatedAt: new Date().toISOString(),
+          };
+
+          fs.mkdirSync(path.dirname(reportFile), { recursive: true });
+          fs.writeFileSync(reportFile, `${JSON.stringify(normalized, null, 2)}\n`, 'utf8');
+
+          if (summaryPath) {
+            const lines = [];
+            lines.push('### Repository Sweep');
+            lines.push('');
+            lines.push(`- Status: \`${normalized.status}\``);
+            lines.push(`- Score: \`${normalized.overallScore}\``);
+            lines.push(`- Findings: \`${normalized.findings.length}\``);
+            lines.push(`- Summary: ${normalized.summary}`);
+            if (normalized.recommendations.length > 0) {
+              lines.push('');
+              lines.push('#### Recommendations');
+              for (const item of normalized.recommendations) {
+                lines.push(`- ${item}`);
+              }
+            }
+            fs.appendFileSync(summaryPath, `${lines.join('\n')}\n`);
+          }
+
+          setOutput('status', normalized.status);
+          setOutput('score', String(normalized.overallScore));
+          setOutput('findings_count', String(normalized.findings.length));
+          setOutput('report_file', reportFile);
+          NODE
+
+      - name: "Upload sweep report"
+        if: steps.normalize.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.REPO_SWEEP_ARTIFACT_NAME }}
+          path: ${{ steps.normalize.outputs.report_file }}

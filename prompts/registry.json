@@ -3,7 +3,8 @@
   "active": {
     "ai_review": "review_v1",
     "code_apply": "code_apply_v1",
-    "hygiene_review": "hygiene_v1"
+    "hygiene_review": "hygiene_v1",
+    "repo_sweep": "repo_sweep_v1"
   },
   "packs": {
     "review_v1": {
@@ -28,6 +29,13 @@
       "system": "prompts/hygiene/v1/system.prompt.md",
       "template": "prompts/hygiene/v1/user.prompt.md",
       "schema": "prompts/hygiene/v1/schema.json"
+    },
+    "repo_sweep_v1": {
+      "id": "repo_sweep",
+      "version": "1.0.0",
+      "riskTier": "medium",
+      "system": "prompts/repo_sweep/v1/system.prompt.md",
+      "schema": "prompts/repo_sweep/v1/schema.json"
     }
   }
 }
