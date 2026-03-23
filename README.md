@@ -53,6 +53,7 @@ Narrative mentions (for example, "we can use /code_apply later") are ignored.
 ## Architecture Docs
 
 - [Code Apply Child PR Design](docs/code-apply-child-pr-design.md)
+- [Implementation Cookbook](docs/implementation-cookbook.md)
 - [Prompt Contracts](docs/prompt-contracts.md)
 - [Hygiene Adversarial Playbook](docs/hygiene-adversarial-playbook.md)
 
