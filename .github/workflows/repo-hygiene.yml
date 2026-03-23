@@ -78,6 +78,9 @@ jobs:
       - name: "Validate policy JSON"
         run: jq . "${{ steps.policy_contract.outputs.policy_file }}" >/dev/null
 
+      - name: "Install OpenCode CLI"
+        uses: ./.provider/.github/actions/install-opencode-ai
+
       - name: "Run AI hygiene checks"
         uses: ./.provider/.github/actions/repo-hygiene
         with:
