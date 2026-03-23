@@ -2,13 +2,15 @@
 
 GitHub Actions workflows for AI-assisted pull request review and targeted `/code_apply` fixes.
 
-Recommended consumer pin: `AWSH-ALCHEMY/opencode-gh-pr@v1.1.3`
+Recommended consumer pin: `AWSH-ALCHEMY/opencode-gh-pr@v1.1.4`
 
 ## Workflows
 
 - `.github/workflows/main.yml`
   - Runs Secure PR Review on pull requests.
   - Builds action artifacts and posts AI review output (summary, inline review, labels, checks).
+- `.github/workflows/publish-release.yml`
+  - Builds the runnable action bundle, creates an automated release commit, and tags it for consumers.
 - `.github/workflows/repo-hygiene.yml`
   - Runs Repo Hygiene AI checks against PR diff using the provider-owned hygiene action and `.github/repo-hygiene-policy.json`.
 - `.github/workflows/repo-sweep.yml`
@@ -62,6 +64,17 @@ Narrative mentions (for example, "we can use /code_apply later") are ignored.
 - **`/.github/workflows/code-apply.yml`** still listens for `/code_apply` issue and review comments, but it can now also be called directly via `workflow_call`. Provide the triggering event (`issue_comment` or `pull_request_review_comment`), the PR number, comment body, comment metadata (ID, author login/association, optional user type and reply target), plus optional prompt registry and policy paths when you want to override the bundled defaults.
 - **`/.github/workflows/repo-hygiene.yml`** now exposes `workflow_call` inputs for `base_sha`, `head_sha`, and optional prompt/policy paths, and it invokes the provider-owned hygiene action from this repo so downstream repos do not need our runner source tree in their checkout.
 - **`/.github/workflows/repo-sweep.yml`** provides a reusable repository-wide audit entrypoint with a default sweep prompt, optional prompt registry override, and JSON report artifact/step summary output.
+
+## Publishing
+
+The `main` branch stays source-only. When you are ready to publish a runnable tag, run the automated release workflow:
+
+- it builds `dist/` from the checked-out source
+- it creates a release commit containing the built artifacts
+- it tags that commit as `v<package.json version>`
+- it publishes the tag as the recommended consumer pin
+
+That keeps release artifacts out of the day-to-day source branch while still producing a runnable GitHub Action tag.
 
 ## Local Dev
 

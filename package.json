@@ -1,6 +1,6 @@
 {
   "name": "secure-pr-review-action",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "description": "Professional AI-powered pull request review with enterprise-grade security",
   "main": "dist/index.js",
   "scripts": {
