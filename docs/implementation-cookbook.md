@@ -23,17 +23,18 @@ The supported override surface is intentionally narrow so the behavior stays pre
 
 | Surface | Where it applies | Typical use |
 | --- | --- | --- |
-| `prompt-registry-path` | `action.yml`, `code-apply.yml`, `repo-hygiene.yml`, `repo-sweep.yml` | Swap prompt packs without forking the code |
-| `policy_path` | `code-apply.yml`, `repo-hygiene.yml` | Point at a repo-specific policy file |
-| `config-file` | `action.yml` | Load a repo-specific review config |
-| `base_sha` / `head_sha` | `repo-hygiene.yml`, `repo-sweep.yml` | Run the same logic against a different commit range |
-| `report_path` / `artifact_name` | `repo-sweep.yml` | Choose where the sweep report is written and how it is published |
+| `prompt-registry-path` | [`action.yml`](../action.yml), [`code-apply.yml`](../.github/workflows/code-apply.yml), [`repo-hygiene.yml`](../.github/workflows/repo-hygiene.yml), [`repo-sweep.yml`](../.github/workflows/repo-sweep.yml) | Swap prompt packs without forking the code |
+| `policy_path` | [`code-apply.yml`](../.github/workflows/code-apply.yml), [`repo-hygiene.yml`](../.github/workflows/repo-hygiene.yml) | Point at a repo-specific policy file |
+| `config-file` | [`action.yml`](../action.yml) | Load a repo-specific review config |
+| `base_sha` / `head_sha` | [`repo-hygiene.yml`](../.github/workflows/repo-hygiene.yml), [`repo-sweep.yml`](../.github/workflows/repo-sweep.yml) | Run the same logic against a different commit range |
+| `report_path` / `artifact_name` | [`repo-sweep.yml`](../.github/workflows/repo-sweep.yml) | Choose where the sweep report is written and how it is published |
 
 Suggested rule of thumb:
 
 - Override paths when the repository has a unique policy or prompt pack.
 - Keep the default prompt registry when you want the upstream behavior.
 - Use `workflow_call` inputs for anything the caller repo should control explicitly.
+- Keep path values relative to the repository root, for example `.github/repo-hygiene-policy.json`, `prompts/registry.json`, or `prompts/repo_sweep/v1/schema.json`.
 
 ## Usage scenarios
 
@@ -132,7 +133,7 @@ If you are unsure, start here:
 
 - Do not depend on the caller repo carrying this repo’s source tree.
 - Do not pin consumers to `main` if you want stable behavior.
-- Do not use absolute paths for policy or prompt files.
+- Do not use absolute paths for policy or prompt files, for example `/tmp/policy.json` or `/Users/alice/custom/prompts.json`.
 - Do not override the workflow execution model unless you really need new behavior.
 
 If you need a new capability, add a new prompt pack or policy first. Move to a code change only when the prompt/policy surface cannot express the desired behavior.
