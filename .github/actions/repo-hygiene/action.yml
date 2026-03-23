@@ -38,6 +38,7 @@ runs:
         PROMPT_REGISTRY_PATH: ${{ inputs.prompt_registry_path }}
       run: |
         set -euo pipefail
-        repo_root="${{ github.action_path }}/../../.."
-        cd "${repo_root}"
-        node dist/hygiene/index.js
+        caller_root="${GITHUB_WORKSPACE}"
+        provider_root="${{ github.action_path }}/../../.."
+        cd "${caller_root}"
+        node "${provider_root}/dist/hygiene/index.js"
