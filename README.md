@@ -10,7 +10,7 @@ Recommended consumer pin: `AWSH-ALCHEMY/opencode-gh-pr@v1.1.1`
   - Runs Secure PR Review on pull requests.
   - Builds action artifacts and posts AI review output (summary, inline review, labels, checks).
 - `.github/workflows/repo-hygiene.yml`
-  - Runs Repo Hygiene AI checks against PR diff using `.github/repo-hygiene-policy.json`.
+  - Runs Repo Hygiene AI checks against PR diff using the provider-owned hygiene action and `.github/repo-hygiene-policy.json`.
 - `.github/workflows/repo-sweep.yml`
   - Runs a repository-wide audit/sweep and emits a structured JSON report artifact plus step summary.
 - `.github/workflows/code-apply.yml`
@@ -59,7 +59,7 @@ Narrative mentions (for example, "we can use /code_apply later") are ignored.
 ## Reusable workflow interface
 
 - **`/.github/workflows/code-apply.yml`** still listens for `/code_apply` issue and review comments, but it can now also be called directly via `workflow_call`. Provide the triggering event (`issue_comment` or `pull_request_review_comment`), the PR number, comment body, comment metadata (ID, author login/association, optional user type and reply target), plus optional prompt registry and policy paths when you want to override the bundled defaults.
-- **`/.github/workflows/repo-hygiene.yml`** now exposes `workflow_call` inputs for `base_sha`, `head_sha`, and optional prompt/policy paths, so downstream repos can run the same hygiene checks from a parent workflow while keeping the existing PR event trigger in this repo.
+- **`/.github/workflows/repo-hygiene.yml`** now exposes `workflow_call` inputs for `base_sha`, `head_sha`, and optional prompt/policy paths, and it invokes the provider-owned hygiene action from this repo so downstream repos do not need our runner source tree in their checkout.
 - **`/.github/workflows/repo-sweep.yml`** provides a reusable repository-wide audit entrypoint with a default sweep prompt, optional prompt registry override, and JSON report artifact/step summary output.
 
 ## Local Dev

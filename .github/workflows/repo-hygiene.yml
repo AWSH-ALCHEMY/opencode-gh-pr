@@ -43,17 +43,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: "Setup Node.js"
-        uses: actions/setup-node@v6
+      - name: "Checkout provider action"
+        uses: actions/checkout@v6
         with:
-          node-version: "20"
-          cache: "npm"
-
-      - name: "Install dependencies"
-        run: npm ci --ignore-scripts
-
-      - name: "Build hygiene runner"
-        run: npm run build:hygiene
+          repository: AWSH-ALCHEMY/opencode-gh-pr
+          ref: ${{ github.workflow_sha }}
+          path: .provider
 
       - name: "Resolve repo hygiene policy path"
         id: policy_contract
@@ -83,8 +78,10 @@ jobs:
       - name: "Validate policy JSON"
         run: jq . "${{ steps.policy_contract.outputs.policy_file }}" >/dev/null
 
-      - name: "Install OpenCode CLI"
-        uses: ./.github/actions/install-opencode-ai
-
       - name: "Run AI hygiene checks"
-        run: node dist/hygiene/index.js
+        uses: ./.provider/.github/actions/repo-hygiene
+        with:
+          base_sha: ${{ env.BASE_SHA }}
+          head_sha: ${{ env.HEAD_SHA }}
+          policy_path: ${{ env.REPO_HYGIENE_POLICY_PATH }}
+          prompt_registry_path: ${{ env.PROMPT_REGISTRY_PATH }}
